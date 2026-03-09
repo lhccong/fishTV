@@ -8,7 +8,7 @@
 
 ## 项目介绍🤩
 
-项目在线地址🚀：https://tv.codebug.icu/
+项目在线地址🚀：https://tv.yucoder.cn/
 
 项目 Github 地址🔥：https://github.com/lhccong/fishTV
 

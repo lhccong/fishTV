@@ -21,7 +21,8 @@ const CACHE_KEYS = {
   MOVIES: 'movies_cache',
   TV: 'tv_cache',
   ANIME: 'anime_cache',
-  VARIETY: 'variety_cache'
+  VARIETY: 'variety_cache',
+  SHORT: 'short_cache'
 };
 
 // 缓存过期时间（1小时）
@@ -55,10 +56,12 @@ const HomePage = () => {
   const [tvContent, setTvContent] = useState<Video[]>([]);
   const [animeContent, setAnimeContent] = useState<Video[]>([]);
   const [varietyContent, setVarietyContent] = useState<Video[]>([]);
+  const [shortContent, setShortContent] = useState<Video[]>([]);
   const [movieLoading, setMovieLoading] = useState(true);
   const [tvLoading, setTvLoading] = useState(true);
   const [animeLoading, setAnimeLoading] = useState(true);
   const [varietyLoading, setVarietyLoading] = useState(true);
+  const [shortLoading, setShortLoading] = useState(true);
 
   // 获取数据的通用函数
   const fetchData = async (
@@ -90,8 +93,9 @@ const HomePage = () => {
   useEffect(() => {
     fetchData(6, setMovieContent, setMovieLoading, CACHE_KEYS.MOVIES);
     fetchData(13, setTvContent, setTvLoading, CACHE_KEYS.TV);
-    fetchData(60, setAnimeContent, setAnimeLoading, CACHE_KEYS.ANIME);
-    fetchData(38, setVarietyContent, setVarietyLoading, CACHE_KEYS.VARIETY);
+    fetchData(29, setAnimeContent, setAnimeLoading, CACHE_KEYS.ANIME);
+    fetchData(25, setVarietyContent, setVarietyLoading, CACHE_KEYS.VARIETY);
+    fetchData(36, setShortContent, setShortLoading, CACHE_KEYS.SHORT);
   }, []);
 
   // 使用useMemo缓存组件渲染
@@ -101,6 +105,12 @@ const HomePage = () => {
       items: movieContent,
       seeMoreLink: "/movies",
       loading: movieLoading
+    },
+    {
+      title: "短剧",
+      items: shortContent,
+      seeMoreLink: "/short",
+      loading: shortLoading
     },
     {
       title: "综艺",
@@ -120,7 +130,7 @@ const HomePage = () => {
       seeMoreLink: "/anime",
       loading: animeLoading
     }
-  ], [movieContent, varietyContent, tvContent, animeContent, movieLoading, varietyLoading, tvLoading, animeLoading]);
+  ], [movieContent, shortContent, varietyContent, tvContent, animeContent, movieLoading, shortLoading, varietyLoading, tvLoading, animeLoading]);
 
   return (
     <Layout>

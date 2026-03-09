@@ -37,7 +37,7 @@ const HistoryPage: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {history.map((item) => (
               <div key={item.id} className="relative group">
-                <Link to={`/play/${item.id}/${item.episode || '1'}/${item.source || 'moyu'}`}>
+                <Link to={`/play/${item.id}/${item.episode || '1'}/${item.source || 'feifan'}`}>
                   <div className="aspect-w-16 aspect-h-9 rounded-lg overflow-hidden">
                     <img
                       src={item.imageUrl}

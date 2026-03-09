@@ -166,7 +166,7 @@ const Header = () => {
                     {history.slice(0, 5).map((item) => (
                       <div key={item.id} className="flex items-center space-x-3 p-2 hover:bg-gray-100 rounded-md group">
                         <Link
-                          to={`/play/${item.id}/${item.episode || '1'}/${item.source || 'moyu'}`}
+                          to={`/play/${item.id}/${item.episode || '1'}/${item.source || 'feifan'}`}
                           className="flex-1 flex items-center space-x-3 min-w-0"
                           onClick={() => setShowWatchHistory(false)}
                         >

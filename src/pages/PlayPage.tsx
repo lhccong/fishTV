@@ -79,7 +79,7 @@ const PlayPage = () => {
       return source as keyof typeof VIDEO_SOURCES;
     }
     const lastHistory = history.find(item => item.id === id);
-    return (lastHistory?.source as keyof typeof VIDEO_SOURCES) || 'moyu';
+    return (lastHistory?.source as keyof typeof VIDEO_SOURCES) || 'feifan';
   });
   const [currentEpisode, setCurrentEpisode] = useState(Number(episode || '1'));
   const [sourceStartIndex, setSourceStartIndex] = useState(0);

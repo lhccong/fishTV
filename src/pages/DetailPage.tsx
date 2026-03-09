@@ -15,7 +15,7 @@ const DetailPage = () => {
     if (source && source in VIDEO_SOURCES) {
       return source as keyof typeof VIDEO_SOURCES;
     }
-    return 'moyu';
+    return 'feifan';
   });
 
   const fetchVideoData = async (source: keyof typeof VIDEO_SOURCES) => {
