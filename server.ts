@@ -58,7 +58,7 @@ app.use(express.static(path.join(__dirname, 'dist'), {
 }));
 
 // SPA 路由处理 - 所有路由都返回 index.html
-app.get('*', (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 

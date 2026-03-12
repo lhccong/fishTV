@@ -96,7 +96,7 @@ const VideoPlayer = ({
     const [showPublicNotice, setShowPublicNotice] = useState(true);
     const playerRef = useRef<HTMLDivElement>(null);
     const dpRef = useRef<DPlayer | null>(null);
-    const progressTimerRef = useRef<number | null>(null);
+    const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // 获取存储的播放进度
     const getStoredProgress = () => {
