@@ -4,7 +4,7 @@
 
 你是否有时烦恼自己想观看某个电影或者电视找不到资源，或者之前自己看的网站倒闭了，那不妨来自己搭一个视频🚉！让你的兄弟、好姐妹、女朋友对你眼前一亮！这个项目是根据 maccms10 视频资源规则来实现的，项目是纯前端项目❤️‍🔥，后面我也会给出配合后端方向的改进点，欢迎大家扩展。
 
-!\[image-20250411095144280]\(./public/img/image-20250411095144280.png null)
+![image-20250411095144280](./public/img/image-20250411095144280.png) 
 
 ## 项目介绍🤩
 
@@ -16,15 +16,15 @@
 
 ### 分类界面
 
-!\[image-20250411095532873]\(./public/img/image-20250411095532873.png null)
+![image-20250411095532873](./public/img/image-20250411095532873.png)
 
 ### 详情界面
 
-!\[image-20250411095559108]\(./public/img/image-20250411095559108.png null)
+![image-20250411095559108](./public/img/image-20250411095559108.png)
 
 ### 播放界面
 
-!\[image-20250411095755998]\(./public/img/image-20250411095755998.png null)
+![image-20250411095755998](./public/img/image-20250411095755998.png)
 
 ## 项目部署操作🍉
 
@@ -44,7 +44,7 @@ git clone  https://github.com/lhccong/fishTV
 
 文件位置：src/api/config.ts
 
-!\[image-20250411100539659]\(./public/img/image-20250411100539659.png null)
+![image-20250411100539659](./public/img/image-20250411100539659.png)
 
 修改这几个就是基于maccms10 规则的数据源了，后面我会给出一堆的数据源给大家的。
 
@@ -111,7 +111,7 @@ location ^~ /subocaiji {
 tsc -b && vite build --outDir dist
 ```
 
-!\[image-20250411101005788]\(./public/img/image-20250411101005788.png null)
+![image-20250411101005788](./public/img/image-20250411101005788.png)
 
 生成 dist 就可以丢到服务器访问了
 
@@ -149,7 +149,7 @@ npm run serve
 5、宝塔反向代理（可选）
 
 用宝塔启动项目后，打开外网映射，添加域名就可以访问了
-![image-20260312165156083](E:\Code\XuanDe\玄德TV\public\img\image-20260312165156083.png)
+![image-20260312165156083](./public/img/image-20260312165156083.png)
 
 ## 项目实现原理🚀
 
@@ -276,7 +276,7 @@ h=几小时内的数据
 
    参考：<https://github.com/synctv-org/synctv>  在线体验地址：<https://synctv.006.cloudns.org/web/>
 
-   !\[image-20250411102842004]\(./public/img/image-20250411102842004.png null)
+   ![image-20250411102842004](./public/img/image-20250411102842004.png)
 
 ## 最后 ✨
 
