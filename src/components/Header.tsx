@@ -4,6 +4,7 @@ import { HiSearch, HiClock, HiHome, HiX, HiTrash } from 'react-icons/hi';
 import { useHistory } from '../context/HistoryContext';
 import { useSearchHistory } from '../context/SearchHistoryContext';
 import ThemeToggle from './ThemeToggle';
+import AccountMenu from './AccountMenu';
 
 const Header = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -201,6 +202,7 @@ const Header = () => {
             </div>
 
             <ThemeToggle />
+            <AccountMenu />
           </div>
         </div>
       </div>

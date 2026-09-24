@@ -1,0 +1,50 @@
+.account-page { min-height: 100vh; background: #f6f7f8; color: #202427; padding: 32px 20px; }
+.account-shell { width: 100%; max-width: 800px; margin: 0 auto; }
+.account-heading { display: flex; align-items: center; gap: 16px; padding-bottom: 24px; border-bottom: 1px solid #dce0e3; }
+.account-heading h1, .account-login h1 { font-size: 26px; font-weight: 700; margin: 0; }
+.account-heading p, .account-login p { color: #59636b; margin-top: 4px; }
+.account-status { margin-left: auto; color: #b53b42; font-size: 13px; white-space: nowrap; }
+.account-section { padding: 24px 0; border-bottom: 1px solid #dce0e3; }
+.account-section h2 { display: flex; gap: 8px; align-items: center; font-size: 17px; font-weight: 600; margin-bottom: 18px; }
+.account-page label { display: flex; flex-direction: column; gap: 8px; font-size: 14px; margin: 14px 0 0; min-width: 0; }
+.account-page input { width: 100%; min-width: 0; height: 42px; border: 1px solid #b9c2c9; border-radius: 6px; background: white; color: #202427; padding: 8px 12px; }
+.account-page input:focus { outline: 2px solid #09847e; outline-offset: 2px; }
+.account-page output { display: block; background: #edf1f2; padding: 12px; color: #3f5559; overflow-wrap: anywhere; border-radius: 4px; }
+.account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.account-page fieldset { min-width: 0; }
+.account-page button, .account-button { display: inline-flex; gap: 8px; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 6px; min-height: 42px; padding: 10px 16px; background: #bc303b; color: white; font-size: 14px; font-weight: 600; cursor: pointer; }
+.account-page button:hover, .account-button:hover { background: #a82630; }
+.account-page button:disabled, .account-page fieldset:disabled button { opacity: .55; cursor: wait; }
+.account-page button.account-secondary { background: white; border-color: #b9c2c9; color: #34424c; }
+.account-actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+.account-help { font-size: 12px; color: #63717b; margin-top: 10px; overflow-wrap: anywhere; }
+.account-page .account-error { padding: 12px 0; color: #b52735; overflow-wrap: anywhere; }
+.account-page .account-success { color: #087b66; padding: 12px 0; }
+.account-centered { display: flex; align-items: center; justify-content: center; }
+.account-login { width: 100%; max-width: 380px; text-align: center; }
+.account-login > img { margin: 0 auto 16px; }
+.account-login > p { margin: 12px 0 24px; }
+.account-login form { text-align: left; }
+.account-login form button { width: 100%; margin-top: 24px; }
+.account-login .account-link { display: block; margin-top: 24px; }
+.account-link { color: #087b76; font-size: 14px; }
+.account-checkbox { flex-direction: row !important; align-items: center; gap: 8px !important; }
+.account-checkbox input { width: 18px; height: 18px; }
+.account-source-list { margin-top: 24px; border-top: 1px solid #dce0e3; }
+.account-source-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid #dce0e3; }
+.account-source-row.is-disabled { opacity: .55; }
+.account-source-row strong, .account-source-row span, .account-source-row code { display: block; }
+.account-source-row span { color: #63717b; font-size: 12px; margin-top: 3px; }
+.account-source-row code { color: #59636b; font-size: 12px; margin-top: 6px; overflow-wrap: anywhere; }
+.account-source-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.account-source-actions button { min-height: 34px; padding: 6px 10px; font-size: 12px; }
+.account-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; padding: 24px 0; border-bottom: 1px solid #dce0e3; }
+.account-metrics dt { font-size: 13px; color: #59636b; }
+.account-metrics dd { margin-top: 8px; font-size: 18px; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .account-page { padding: 24px 16px; }
+  .account-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .account-heading { flex-wrap: wrap; }
+  .account-metrics { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .account-source-row { align-items: flex-start; flex-direction: column; }
+}

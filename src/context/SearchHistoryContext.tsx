@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useCurrentUser } from './AccessGate';
 
 interface SearchHistoryItem {
   query: string;
@@ -15,14 +16,16 @@ interface SearchHistoryContextType {
 const SearchHistoryContext = createContext<SearchHistoryContextType | undefined>(undefined);
 
 export const SearchHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const user = useCurrentUser();
+  const storageKey = `fishTV:searchHistory:${user?.id || 'admin'}`;
   const [history, setHistory] = useState<SearchHistoryItem[]>(() => {
-    const saved = localStorage.getItem('searchHistory');
+    const saved = localStorage.getItem(storageKey);
     return saved ? JSON.parse(saved) : [];
   });
 
   useEffect(() => {
-    localStorage.setItem('searchHistory', JSON.stringify(history));
-  }, [history]);
+    localStorage.setItem(storageKey, JSON.stringify(history));
+  }, [history, storageKey]);
 
   const addToHistory = (query: string) => {
     if (!query.trim()) return;
@@ -56,4 +59,4 @@ export const useSearchHistory = () => {
     throw new Error('useSearchHistory must be used within a SearchHistoryProvider');
   }
   return context;
-}; 
+};

@@ -1,8 +1,11 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import compression from 'compression';
-import cors from 'cors';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { mountServices } from './server/bootstrap.js';
+import { requireUser } from './server/userAuth.js';
+import { apiError } from './server/security.js';
+import { videoSourceProxy } from './server/videoProxy.js';
 
 async function createServer() {
   const app = express();
@@ -10,9 +13,11 @@ async function createServer() {
 
   // 中间件
   app.use(compression());
-  app.use(cors());
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: '16kb' }));
+
+  await mountServices(app);
+
+  app.use('/video-source/:sourceId', ...videoSourceProxy);
 
   // API 反向代理配置
   const proxyConfig = {
@@ -45,8 +50,13 @@ async function createServer() {
 
   // 应用反向代理
   Object.entries(proxyConfig).forEach(([path, config]) => {
-    app.use(path, createProxyMiddleware(config));
+    app.use(path, requireUser, (req, _res, next) => {
+      delete req.headers.cookie;
+      delete req.headers.authorization;
+      next();
+    }, createProxyMiddleware({ ...config, proxyTimeout: 15000, timeout: 20000 }));
   });
+  app.use(apiError);
 
   // 创建 Vite 服务器（开发模式）
   const vite = await createViteServer({
@@ -61,8 +71,8 @@ async function createServer() {
   app.listen(PORT, () => {
     console.log(`🚀 Dev server is running on http://localhost:${PORT}`);
     console.log(`📡 API proxies configured:`);
-    Object.keys(proxyConfig).forEach(path => {
-      console.log(`   ${path} -> ${proxyConfig[path].target}`);
+    Object.entries(proxyConfig).forEach(([path, config]) => {
+      console.log(`   ${path} -> ${config.target}`);
     });
   });
 }

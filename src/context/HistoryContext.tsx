@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useCurrentUser } from './AccessGate';
 
 interface HistoryItem {
   id: string;
@@ -19,14 +20,16 @@ interface HistoryContextType {
 const HistoryContext = createContext<HistoryContextType | undefined>(undefined);
 
 export const HistoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const user = useCurrentUser();
+  const storageKey = `fishTV:watchHistory:${user?.id || 'admin'}`;
   const [history, setHistory] = useState<HistoryItem[]>(() => {
-    const saved = localStorage.getItem('watchHistory');
+    const saved = localStorage.getItem(storageKey);
     return saved ? JSON.parse(saved) : [];
   });
 
   useEffect(() => {
-    localStorage.setItem('watchHistory', JSON.stringify(history));
-  }, [history]);
+    localStorage.setItem(storageKey, JSON.stringify(history));
+  }, [history, storageKey]);
 
   const addToHistory = (item: HistoryItem) => {
     setHistory(prev => {
@@ -61,4 +64,4 @@ export const useHistory = () => {
     throw new Error('useHistory must be used within a HistoryProvider');
   }
   return context;
-}; 
+};

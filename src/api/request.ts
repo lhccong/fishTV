@@ -13,12 +13,14 @@ const request = async <T>(endpoint: string, params: Record<string, any> = {}, ba
   try {
     const response = await fetch(url, {
       method: 'GET',
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
     if (!response.ok) {
+      if (response.status === 401) window.dispatchEvent(new Event('fish-tv-auth-expired'));
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
@@ -30,4 +32,4 @@ const request = async <T>(endpoint: string, params: Record<string, any> = {}, ba
   }
 };
 
-export default request; 
+export default request;

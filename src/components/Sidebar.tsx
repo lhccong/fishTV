@@ -22,6 +22,7 @@ const Sidebar = () => {
     { id: 3, name: '电视剧', icon: HiDesktopComputer, link: '/tv' },
     { id: 4, name: '动漫', icon: HiSparkles, link: '/anime' },
     { id: 6, name: '短剧', icon: HiVideoCamera, link: '/short' },
+    { id: 7, name: '后台', icon: HiCog6Tooth, link: '/admin' },
   ];
 
   return (

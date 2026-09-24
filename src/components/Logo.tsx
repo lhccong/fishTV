@@ -4,7 +4,7 @@ const Logo = () => {
   return (
     <div className="flex items-center">
       <img
-        src="/img.png"
+        src="https://oss.cqbo.com/moyu/moyu.png"
         alt="摸鱼 TV"
         className="w-8 h-8 mr-2"
       />

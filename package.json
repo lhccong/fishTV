@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.dev.ts",
-    "build": "tsc -b && vite build --outDir dist",
+    "build": "npm run build:check",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json",
+    "build:check": "npm run typecheck && vite build --outDir dist",
     "start": "npm run build && tsx server.ts",
     "serve": "tsx server.ts",
     "lint": "bunx biome lint --write && bunx tsc --noEmit",
@@ -27,6 +29,7 @@
     "react-dom": "^18.3.1",
     "react-icons": "^5.5.0",
     "react-router-dom": "^7.5.0",
+    "redis": "^5.12.1",
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {

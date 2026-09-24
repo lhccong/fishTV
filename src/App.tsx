@@ -15,6 +15,8 @@ import { bannerData, trendingContent, tvContent, animeContent } from './data/sam
 import { getVideoList } from './api/video';
 import { Video } from './api/types';
 import TypeListPage from "./pages/TypeListPage.tsx";
+import AdminPage from './pages/AdminPage';
+import AccessGate from './context/AccessGate';
 
 // 缓存键名
 const CACHE_KEYS = {
@@ -156,9 +158,10 @@ const HomePage = () => {
 const App: React.FC = () => {
   return (
     <ThemeProvider>
+      <Router>
+        <AccessGate>
       <HistoryProvider>
         <SearchHistoryProvider>
-          <Router>
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/movies" element={<TypeListPage type="movies" />} />
@@ -170,10 +173,12 @@ const App: React.FC = () => {
               <Route path="/play/:id/:episode?/:source?" element={<PlayPage />} />
               <Route path="/search" element={<SearchResultsPage />} />
               <Route path="/history" element={<HistoryPage />} />
+              <Route path="/admin" element={<AdminPage />} />
             </Routes>
-          </Router>
         </SearchHistoryProvider>
       </HistoryProvider>
+        </AccessGate>
+      </Router>
     </ThemeProvider>
   );
 };
