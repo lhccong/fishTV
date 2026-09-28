@@ -40,6 +40,7 @@ export type RoomSummary = {
   playback: RoomPlayback | null;
   hasPassword?: boolean;
   permanent?: boolean;
+  playMode?: 'sequential' | 'single' | 'random';
 };
 type JoinResponse = { success: boolean; room?: RoomSummary; messages?: RoomChatMessage[]; error?: string; code?: string };
 
@@ -168,6 +169,9 @@ function useRoomConnection() {
     }
     return response;
   }, [emit]);
+  const dissolveRoom = useCallback(async () => (
+    emit<{ success: boolean; error?: string; code?: string }>('dissolve_room')
+  ), [emit]);
 
   const cancelJoin = useCallback((roomId: string) => {
     const id = roomId.trim().toUpperCase();
@@ -181,12 +185,22 @@ function useRoomConnection() {
   }, []);
 
   const setRoomPlayback = useCallback(async (payload: Omit<RoomPlayback, 'updatedAt' | 'revision'>) => {
-    const result = await emit<{ success: boolean; playback?: RoomPlayback; error?: string }>('set_playback', payload);
+    const result = await emit<{ success: boolean; playback?: RoomPlayback; error?: string; code?: string }>('set_playback', payload);
+    if (result.success && result.playback) setPlayback(result.playback);
+    return result;
+  }, [emit]);
+  const advanceRoomPlayback = useCallback(async (payload: Omit<RoomPlayback, 'updatedAt' | 'revision'> & { expectedRevision: number }) => {
+    const result = await emit<{ success: boolean; playback?: RoomPlayback; error?: string; code?: string }>('advance_playback', payload);
     if (result.success && result.playback) setPlayback(result.playback);
     return result;
   }, [emit]);
   const setRoomPassword = useCallback(async (password: string) => {
     const result = await emit<{ success: boolean; room?: RoomSummary; error?: string }>('set_room_password', { password });
+    if (result.success && result.room) setRoom(result.room);
+    return result;
+  }, [emit]);
+  const setRoomPlayMode = useCallback(async (mode: NonNullable<RoomSummary['playMode']>) => {
+    const result = await emit<{ success: boolean; room?: RoomSummary; error?: string }>('set_play_mode', { mode });
     if (result.success && result.room) setRoom(result.room);
     return result;
   }, [emit]);
@@ -284,8 +298,11 @@ function useRoomConnection() {
     joinRoom,
     cancelJoin,
     leaveRoom,
+    dissolveRoom,
     setRoomPlayback,
+    advanceRoomPlayback,
     setRoomPassword,
+    setRoomPlayMode,
     setPlaybackClock,
     sendChat,
     loadChatHistory,

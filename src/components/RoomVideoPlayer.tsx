@@ -14,16 +14,17 @@ type Props = {
   liveMessages: RoomChatMessage[];
   userId?: string;
   sendChat: (text: string) => Promise<{ success: boolean; error?: string }>;
+  onEnded?: () => void;
 };
 
-export default function RoomVideoPlayer({ url, playback, owner, connected, onClock, messages, liveMessages, userId, sendChat }: Props) {
+export default function RoomVideoPlayer({ url, playback, owner, connected, onClock, messages, liveMessages, userId, sendChat, onEnded }: Props) {
   const element = useRef<HTMLVideoElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
   const [theater, setTheater] = useState(false);
   const fullscreen = nativeFullscreen || theater;
-  const live = useRef({ playback, owner, connected, onClock });
-  live.current = { playback, owner, connected, onClock };
+  const live = useRef({ playback, owner, connected, onClock, onEnded });
+  live.current = { playback, owner, connected, onClock, onEnded };
   const [error, setError] = useState('');
   const [blocked, setBlocked] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -61,10 +62,20 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
     let sending = false;
     let attempting = false;
     let appliedRevision = -1;
+    let endedReported = false;
     setError(''); setBlocked(false);
+    const finish = () => {
+      if (endedReported || !live.current.owner) return;
+      endedReported = true;
+      live.current.onEnded?.();
+    };
     const sync = () => {
       const state = live.current.playback;
       if (disposed || !live.current.connected || video.readyState < 1 || sending) return;
+      if (video.ended) {
+        finish();
+        return;
+      }
       const target = Math.max(0, state.positionSeconds + (state.playing ? Math.max(0, Date.now() - state.updatedAt) / 1000 : 0));
       const position = Number.isFinite(video.duration) ? Math.min(target, Math.max(0, video.duration - 0.05)) : target;
       const changed = appliedRevision !== state.revision;
@@ -74,7 +85,7 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
         applyingUntil = performance.now() + 500;
         video.currentTime = position;
       }
-      if (state.playing && video.paused && !attempting) {
+      if (state.playing && video.paused && !video.ended && !attempting) {
         applyingUntil = performance.now() + 500;
         attempting = true;
         void video.play().then(() => { if (!disposed) setBlocked(false); })
@@ -95,7 +106,9 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
     };
     const failure = () => setError('视频加载失败，请重试或由房主切换视频源');
     video.addEventListener('loadedmetadata', sync);
-    for (const event of ['play', 'pause', 'seeked', 'ended']) video.addEventListener(event, report);
+    for (const event of ['play', 'pause', 'seeked']) video.addEventListener(event, report);
+    const ended = () => finish();
+    video.addEventListener('ended', ended);
     video.addEventListener('error', failure);
     if (/\.m3u8(?:$|\?)/i.test(url) && Hls.isSupported()) {
       hls = new Hls();
@@ -109,7 +122,8 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
       disposed = true;
       clearInterval(timer); clearInterval(heartbeat);
       video.removeEventListener('loadedmetadata', sync);
-      for (const event of ['play', 'pause', 'seeked', 'ended']) video.removeEventListener(event, report);
+      for (const event of ['play', 'pause', 'seeked']) video.removeEventListener(event, report);
+      video.removeEventListener('ended', ended);
       video.removeEventListener('error', failure);
       hls?.destroy();
       video.pause(); video.removeAttribute('src'); video.load();

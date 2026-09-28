@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { HiArrowLeft, HiChatAlt2, HiFilm, HiLogout, HiPlay, HiSearch, HiUserCircle, HiUserGroup, HiDesktopComputer, HiSparkles, HiMicrophone, HiVideoCamera, HiServer } from 'react-icons/hi';
+import { HiArrowLeft, HiChatAlt2, HiFilm, HiLogout, HiPlay, HiSearch, HiTrash, HiUserCircle, HiUserGroup, HiDesktopComputer, HiSparkles, HiMicrophone, HiVideoCamera, HiServer } from 'react-icons/hi';
 import { useCurrentUser } from '../context/AccessGate';
 import { useRoomSocket } from '../hooks/useRoomSocket';
 import { VIDEO_SOURCES } from '../api/config';
 import { getVideoDetail, getVideoList } from '../api/video';
 import type { Video } from '../api/types';
-import { isRoomMedia, roomEpisodes } from '../lib/roomVideo';
+import { allEpisodes, isRoomMedia, roomEpisodes } from '../lib/roomVideo';
 import RoomVideoPlayer from '../components/RoomVideoPlayer';
 import RoomInvite from '../components/RoomInvite';
 import RoomPasswordSettings from '../components/RoomPasswordSettings';
@@ -19,7 +19,7 @@ export default function WatchRoomPage() {
   const { roomId = '' } = useParams();
   const navigate = useNavigate();
   const user = useCurrentUser();
-  const { room, playback, messages, liveMessages, connected, joinFailure, error: socketError, joinRoom, leaveRoom, setRoomPlayback, setPlaybackClock, sendChat } = useRoomSocket();
+  const { room, playback, messages, liveMessages, connected, joinFailure, error: socketError, joinRoom, leaveRoom, dissolveRoom, setRoomPlayback, advanceRoomPlayback, setRoomPlayMode, setPlaybackClock, sendChat } = useRoomSocket();
   const joined = room?.id === roomId.toUpperCase();
   const owner = joined && room.ownerId === user?.id;
   const [activePanel, setActivePanel] = useState<'invite' | 'password' | 'members' | null>(null);
@@ -48,14 +48,18 @@ export default function WatchRoomPage() {
   const [catalogError, setCatalogError] = useState('');
   const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [media, setMedia] = useState<{ key: string; url: string; title: string } | null>(null);
+  const [playingVideo, setPlayingVideo] = useState<Video | null>(null);
   const [mediaError, setMediaError] = useState('');
   const [mediaAttempt, setMediaAttempt] = useState(0);
+  const [playModeSaving, setPlayModeSaving] = useState(false);
+  const autoAdvance = useRef(false);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const chatScroll = useRef<HTMLDivElement>(null);
   const followChat = useRef(true);
   const mediaKey = playback ? `${playback.sourceId}:${playback.videoId}:${playback.episode}` : '';
-  const selection = roomEpisodes(selected || { vod_play_url: '' } as Video);
+  const selection = allEpisodes(selected || { vod_play_url: '' } as Video);
+  const playableSelection = selection.filter(item => isRoomMedia(item.url));
 
   useEffect(() => { setActivePanel(null); }, [roomId, joined, owner]);
   useEffect(() => {
@@ -96,7 +100,7 @@ export default function WatchRoomPage() {
   }, [owner, source, category, keyword, page, catalogAttempt]);
 
   useEffect(() => {
-    if (!joined || !playback) { setMedia(null); return; }
+    if (!joined || !playback) { setMedia(null); setPlayingVideo(null); return; }
     const current = playback;
     const config = VIDEO_SOURCES[current.sourceId];
     setMedia(null); setMediaError('');
@@ -108,12 +112,96 @@ export default function WatchRoomPage() {
       if (cancelled) return;
       const video = result.list?.[0];
       const episode = video && roomEpisodes(video)[current.episode - 1];
+      setPlayingVideo(video || null);
       if (!video || !episode || !isRoomMedia(episode.url)) { setMediaError('该集暂不支持共同播放，请房主切换影片'); return; }
       setMedia({ key: mediaKey, url: episode.url, title: video.vod_name });
     }).catch(() => { if (!cancelled) setMediaError('影片加载失败，请重试'); })
       .finally(() => clearTimeout(timeout));
     return () => { cancelled = true; clearTimeout(timeout); };
   }, [joined, mediaKey, mediaAttempt]);
+
+  const changePlayingEpisode = async (nextEpisode: number) => {
+    if (!owner || !playback || !playingVideo || busy) return;
+    const item = allEpisodes(playingVideo)[nextEpisode - 1];
+    if (!item || !isRoomMedia(item.url)) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await setRoomPlayback({
+        videoId: playback.videoId,
+        sourceId: playback.sourceId,
+        episode: nextEpisode,
+        videoUrl: item.url,
+        title: playingVideo.vod_name,
+        positionSeconds: 0,
+        playing: true,
+      });
+      if (!result.success) setError(result.error || '切换集数失败，请重试');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const playMode = room?.playMode || 'sequential';
+  const playNextEpisode = async () => {
+    if (!owner || !playingVideo || !playback || autoAdvance.current) return;
+    autoAdvance.current = true;
+    const stopAtEnd = async () => {
+      let result = await setPlaybackClock(playback.positionSeconds, false, playback.revision);
+      if (!result.success && result.code === 'STALE_PLAYBACK' && result.playback) {
+        result = await setPlaybackClock(result.playback.positionSeconds, false, result.playback.revision);
+      }
+      if (!result.success && result.code !== 'STALE_PLAYBACK') setError(result.error || '停止播放失败，请重试');
+    };
+    if (playMode === 'single') {
+      await stopAtEnd();
+      autoAdvance.current = false;
+      return;
+    }
+    const episodes = allEpisodes(playingVideo).map((item, index) => ({ item, index }))
+      .filter(({ item }) => isRoomMedia(item.url));
+    if (!episodes.length) {
+      autoAdvance.current = false;
+      return;
+    }
+    let nextIndex = -1;
+    if (playMode === 'random') {
+      const choices = episodes.filter(({ index }) => index !== playback.episode - 1);
+      if (choices.length) nextIndex = choices[Math.floor(Math.random() * choices.length)].index;
+    } else {
+      const currentIndex = episodes.findIndex(({ index }) => index === playback.episode - 1);
+      if (currentIndex >= 0 && currentIndex + 1 < episodes.length) nextIndex = episodes[currentIndex + 1].index;
+    }
+    if (nextIndex < 0) {
+      await stopAtEnd();
+      autoAdvance.current = false;
+      return;
+    }
+    const next = episodes.find(({ index }) => index === nextIndex)?.item;
+    if (!next) {
+      autoAdvance.current = false;
+      return;
+    }
+    const requestNext = (expectedRevision: number) => advanceRoomPlayback({
+      expectedRevision,
+      videoId: playback.videoId,
+      sourceId: playback.sourceId,
+      episode: nextIndex + 1,
+      videoUrl: next.url,
+      title: playingVideo.vod_name,
+      positionSeconds: 0,
+      playing: true,
+    });
+    let result = await requestNext(playback.revision);
+    if (!result.success && result.code === 'STALE_PLAYBACK' && result.playback &&
+      result.playback.videoId === playback.videoId && result.playback.sourceId === playback.sourceId &&
+      result.playback.episode === playback.episode) {
+      result = await requestNext(result.playback.revision);
+    }
+    if (!result.success && result.code !== 'STALE_PLAYBACK' && result.code !== 'PLAY_MODE_SINGLE') {
+      setError(result.error || '自动切换失败，请重试');
+    }
+    autoAdvance.current = false;
+  };
 
   useEffect(() => {
     const container = chatScroll.current;
@@ -124,12 +212,15 @@ export default function WatchRoomPage() {
     try {
       const result = await getVideoDetail(String(video.vod_id), VIDEO_SOURCES[source].url);
       if (!result.list?.[0]) throw new Error('影片详情不存在');
-      setSelected(result.list[0]); setSelectedSource(source); setEpisode(1);
+      const detail = result.list[0];
+      const episodes = allEpisodes(detail);
+      const firstPlayable = episodes.findIndex(item => isRoomMedia(item.url));
+      setSelected(detail); setSelectedSource(source); setEpisode(firstPlayable >= 0 ? firstPlayable + 1 : 1);
     } catch { setError('影片详情加载失败，请重试'); }
     finally { setBusy(false); }
   };
   const publish = async () => {
-    if (!selected || busy || !selection[episode - 1]) return;
+    if (!selected || busy || !selection[episode - 1] || !isRoomMedia(selection[episode - 1].url)) return;
     setBusy(true); setError('');
     const result = await setRoomPlayback({
       videoId: String(selected.vod_id), sourceId: selectedSource, episode,
@@ -150,6 +241,11 @@ export default function WatchRoomPage() {
         {joined ? <RoomMembers room={room} userId={user?.id} open={activePanel === 'members'} onOpenChange={open => setActivePanel(open ? 'members' : null)} /> : <span><HiUserGroup />0 人在线</span>}
         {joined && <RoomInvite key={room.id} roomId={room.id} open={activePanel === 'invite'} onOpenChange={open => setActivePanel(open ? 'invite' : null)} />}
         {owner && <RoomPasswordSettings key={room.id} open={activePanel === 'password'} onOpenChange={open => setActivePanel(open ? 'password' : null)} />}
+        {owner && <button className="watch-danger-action" disabled={!connected} onClick={async () => {
+          if (!window.confirm('解散后房间、播放记录和聊天记录都会被删除，在线成员也会被移出。确定解散房间吗？')) return;
+          const result = await dissolveRoom();
+          if (result.success) navigate('/rooms'); else setError(result.error || '解散房间失败');
+        }}><HiTrash />解散房间</button>}
         <Link to="/rooms"><HiArrowLeft />房间大厅</Link>
         <button disabled={!joined || !connected} onClick={async () => {
           const result = await leaveRoom();
@@ -177,6 +273,29 @@ export default function WatchRoomPage() {
           <div className="watch-section-label"><HiFilm />片库</div>
           <nav aria-label="影片分类">{categories.map(item => <button key={item.id} aria-pressed={category === item.id && !keyword} onClick={() => { setCategory(item.id); setKeyword(''); setQuery(''); setPage(1); setPicker(true); }}><item.icon aria-hidden="true" /><span>{item.name}</span></button>)}</nav>
           <label className="watch-source"><span><HiServer aria-hidden="true" />视频源</span><select value={source} onChange={event => { setSource(event.target.value); setPage(1); setPicker(true); }}>{Object.entries(VIDEO_SOURCES).map(([id, item]) => <option key={id} value={id}>{item.name}</option>)}</select></label>
+          {playingVideo && <label className="watch-play-mode"><span><HiPlay aria-hidden="true" />播放设置</span><select aria-label="播放设置" value={playMode} disabled={!owner || busy || !connected || playModeSaving} onChange={event => {
+            setPlayModeSaving(true);
+            void setRoomPlayMode(event.target.value as NonNullable<typeof playMode>).then(result => {
+              if (!result.success) setError(result.error || '播放设置保存失败');
+            }).finally(() => setPlayModeSaving(false));
+          }}><option value="sequential">自动连播</option><option value="single">单个播放</option><option value="random">随机播放</option></select></label>}
+          {playingVideo && <section className="watch-episodes" aria-label="当前影片集数">
+            <div className="watch-section-label"><HiFilm />选集<span>{allEpisodes(playingVideo).length} 集</span></div>
+            <div className="watch-episode-list">
+              {allEpisodes(playingVideo).map((item, index) => {
+                const episodeNumber = index + 1;
+                const playable = isRoomMedia(item.url);
+                return <button key={`${episodeNumber}:${item.url}`} type="button"
+                  className={playback?.episode === episodeNumber ? 'is-current' : ''}
+                  disabled={!playable || busy}
+                  onClick={() => void changePlayingEpisode(episodeNumber)}
+                  title={playable ? item.name : '该集不支持共同播放'}>
+                  <span>{item.name || `第 ${episodeNumber} 集`}</span>
+                  {!playable && <small>不可同步</small>}
+                </button>;
+              })}
+            </div>
+          </section>}
         </aside>}
         <section className={`watch-main ${owner && (!playback || picker) ? 'watch-browsing' : ''}`}>
           {playback && <div className="watch-now">
@@ -186,6 +305,7 @@ export default function WatchRoomPage() {
           {playback ? <>
             {media?.key === mediaKey ? <RoomVideoPlayer key={mediaKey} url={media.url} playback={playback} owner={owner} connected={connected}
               messages={messages} liveMessages={liveMessages} userId={user?.id} sendChat={sendChat}
+              onEnded={() => void playNextEpisode()}
               onClock={async (position, playing, revision) => {
                 const result = await setPlaybackClock(position, playing, revision);
                 if (!result.success && result.code !== 'STALE_PLAYBACK') setError(result.error || '播放同步失败');
@@ -199,7 +319,8 @@ export default function WatchRoomPage() {
             {selected && <div className="watch-selection">
               <img src={selected.vod_pic} alt="" onError={event => { event.currentTarget.style.visibility = 'hidden'; }} />
               <div><h3>{selected.vod_name}</h3><p>{selected.vod_year} · {selected.vod_area}</p>
-                {selection.length ? <label>集数<select aria-label="选择集数" value={episode} onChange={event => setEpisode(Number(event.target.value))}>{selection.map((item, index) => <option key={index} value={index + 1} disabled={!isRoomMedia(item.url)}>{item.name}</option>)}</select></label> : <p role="alert">该影片暂不支持共同播放，请切换视频源</p>}
+                {selection.length ? <label>集数<select aria-label="选择集数" value={episode} onChange={event => setEpisode(Number(event.target.value))}>{selection.map((item, index) => <option key={index} value={index + 1}>{item.name}{isRoomMedia(item.url) ? '' : '（暂不支持共同播放）'}</option>)}</select></label> : <p role="alert">该影片暂无可用集数，请切换视频源</p>}
+                {selection.length > 0 && playableSelection.length === 0 && <p role="alert">该影片的集数不是可同步的直链，请切换视频源</p>}
                 <button className="watch-primary" disabled={busy || !connected || !isRoomMedia(selection[episode - 1]?.url || '')} onClick={() => void publish()}><HiPlay />共同播放</button>
               </div>
             </div>}

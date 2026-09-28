@@ -59,6 +59,7 @@ type RoomState = RoomRetention & {
   members: Record<string, RoomMember>;
   playback: PlaybackState | null;
   chat: ChatMessage[];
+  playMode?: 'sequential' | 'single' | 'random';
 };
 
 type AuthenticatedSocket = Socket & { data: { session: UserSession; roomId?: string } };
@@ -99,6 +100,7 @@ function publicRoom(room: RoomState) {
     playback: room.playback,
     hasPassword: Boolean(room.passwordHash),
     permanent: Boolean(room.permanent),
+    playMode: room.playMode || 'sequential',
   };
 }
 
@@ -121,6 +123,8 @@ async function loadRoom(roomId: string) {
   } catch {
     return null;
   }
+  parsed.playMode = parsed.playMode === 'single' || parsed.playMode === 'random'
+    ? parsed.playMode : 'sequential';
   // Redis snapshots may contain members from a previous process; sockets are authoritative.
   if (liveIo) {
     const previousEmptySince = parsed.emptySince;
@@ -380,6 +384,7 @@ export function mountSocketServer(httpServer: HttpServer) {
           emptyMinutes: null,
           emptySince: Date.now(),
           passwordHash,
+          playMode: 'sequential',
         };
         await saveRoom(room);
         callback?.({ success: true, room: publicRoom(room) });
@@ -456,6 +461,25 @@ export function mountSocketServer(httpServer: HttpServer) {
       callback({ success: true, room: publicRoom(room) });
     });
 
+    handle('set_play_mode', async (payload, callback) => {
+      const id = requireJoined(socket, callback);
+      if (!id) return;
+      const room = await loadRoom(id);
+      if (!room || room.ownerId !== session.profile.id) {
+        ackError(callback, '只有房主可以修改播放设置', 'ROOM_FORBIDDEN');
+        return;
+      }
+      const mode = payload?.mode;
+      if (mode !== 'sequential' && mode !== 'single' && mode !== 'random') {
+        ackError(callback, '播放设置无效', 'INVALID_PLAY_MODE');
+        return;
+      }
+      room.playMode = mode;
+      await saveRoom(room);
+      broadcastRoom(io, room);
+      callback({ success: true, room: publicRoom(room) });
+    });
+
     handle('leave_room', async (_payload, callback) => {
       const roomId = socketRoom(socket);
       if (!roomId) {
@@ -472,6 +496,28 @@ export function mountSocketServer(httpServer: HttpServer) {
         await saveRoom(room);
         broadcastRoom(io, room);
       }
+      callback?.({ success: true });
+    });
+
+    handle('dissolve_room', async (_payload, callback) => {
+      const roomId = requireJoined(socket, callback);
+      if (!roomId) return;
+      const room = await loadRoom(roomId);
+      if (!room || room.ownerId !== session.profile.id) {
+        ackError(callback, '只有房主可以解散房间', 'ROOM_FORBIDDEN');
+        return;
+      }
+      await deleteRoom(roomId);
+      io.to(roomId).emit('room_removed', {
+        roomId,
+        code: 'ROOM_DISSOLVED',
+        error: '房主已解散该房间',
+      });
+      for (const memberSocket of io.sockets.sockets.values()) {
+        if (memberSocket.data.roomId === roomId) delete memberSocket.data.roomId;
+      }
+      io.in(roomId).socketsLeave(roomId);
+      console.info('[rooms] owner_room_dissolved');
       callback?.({ success: true });
     });
 
@@ -537,6 +583,49 @@ export function mountSocketServer(httpServer: HttpServer) {
       await saveRoom(room);
       callback?.({ success: true, playback: room.playback });
       io.to(roomId).emit('playback_state', room.playback);
+    });
+
+    handle('advance_playback', async (payload, callback) => {
+      const roomId = requireJoined(socket, callback);
+      if (!roomId) return;
+      const room = await loadRoom(roomId);
+      if (!room || room.ownerId !== session.profile.id || !room.playback) {
+        ackError(callback, '只有房主可以控制共同播放');
+        return;
+      }
+      if (room.playMode === 'single') {
+        ackError(callback, '当前播放设置不会自动连播', 'PLAY_MODE_SINGLE');
+        return;
+      }
+      if (!Number.isInteger(payload?.expectedRevision) || payload.expectedRevision !== room.playback.revision) {
+        callback({ success: false, code: 'STALE_PLAYBACK', error: '播放状态已更新', playback: room.playback });
+        return;
+      }
+      const videoId = normalizeText(payload?.videoId, 128);
+      const sourceId = normalizeText(payload?.sourceId, 128);
+      const videoUrl = normalizeMediaUrl(payload?.videoUrl);
+      const episode = Number(payload?.episode);
+      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(videoId) || !getVideoSource(sourceId) || !videoUrl ||
+          typeof payload?.playing !== 'boolean' || !Number.isFinite(payload?.positionSeconds) ||
+          !Number.isInteger(episode) || episode < 1 || episode > 10000) {
+        ackError(callback, '播放信息无效');
+        return;
+      }
+      room.playback = {
+        videoId,
+        sourceId,
+        episode,
+        videoUrl,
+        playing: Boolean(payload.playing),
+        positionSeconds: Math.max(0, Math.min(Number(payload.positionSeconds) || 0, 24 * 60 * 60)),
+        updatedAt: Date.now(),
+        revision: room.playback.revision + 1,
+        title: normalizeText(payload.title, 160),
+      };
+      await saveRoom(room);
+      callback?.({ success: true, playback: room.playback });
+      io.to(roomId).emit('playback_state', room.playback);
+      broadcastRoom(io, room);
     });
 
     handle('send_chat', async (payload, callback) => {

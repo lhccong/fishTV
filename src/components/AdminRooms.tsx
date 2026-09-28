@@ -88,7 +88,7 @@ export default function AdminRooms({ onError }: Props) {
           <tbody>{data.rooms.map(room => <tr key={room.id}>
             <td><strong>{room.name}</strong><small>{room.id}</small></td>
             <td>{room.memberCount} 人</td>
-            <td>{room.permanent ? '永驻' : room.emptyMinutes !== null ? `空房 ${room.emptyMinutes} 分钟` : data.policy.emptyMinutes ? `跟随全局 ${data.policy.emptyMinutes} 分钟` : '不自动清理'}</td>
+            <td>{room.permanent ? '永驻' : room.emptyMinutes !== null ? `空房 ${room.emptyMinutes} 分钟` : data.policy.emptyMinutes ? `跟随全局 ${data.policy.emptyMinutes} 分钟` : '跟随全局（当前不自动清理）'}</td>
             <td>{room.hasPassword ? <span><HiLockClosed />密码房间</span> : '公开'}</td>
             <td><div className="account-room-actions">
               <button type="button" className="account-secondary" disabled={busy} onClick={() => edit(room)}>管理</button>

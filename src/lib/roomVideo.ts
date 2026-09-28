@@ -2,6 +2,10 @@ import type { Video } from '../api/types';
 
 export type VideoEpisode = { name: string; url: string };
 
+function decodeEpisodeUrl(value: string) {
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
 export function videoEpisodes(video: Video, directOnly = false): VideoEpisode[] {
   const lines = video.vod_play_url?.split('$$$') || [];
   let fallback: VideoEpisode[] = [];
@@ -9,8 +13,8 @@ export function videoEpisodes(video: Video, directOnly = false): VideoEpisode[] 
     const episodes = line.split('#').map((entry, index) => {
       const separator = entry.indexOf('$');
       return {
-        name: separator >= 0 ? entry.slice(0, separator) : `第 ${index + 1} 集`,
-        url: (separator >= 0 ? entry.slice(separator + 1) : entry).trim(),
+        name: (separator >= 0 ? entry.slice(0, separator) : `第 ${index + 1} 集`).trim() || `第 ${index + 1} 集`,
+        url: decodeEpisodeUrl((separator >= 0 ? entry.slice(separator + 1) : entry).trim()),
       };
     });
     if (!fallback.length) fallback = episodes;
@@ -21,6 +25,10 @@ export function videoEpisodes(video: Video, directOnly = false): VideoEpisode[] 
 
 export function roomEpisodes(video: Video): VideoEpisode[] {
   return videoEpisodes(video, true);
+}
+
+export function allEpisodes(video: Video): VideoEpisode[] {
+  return videoEpisodes(video, false);
 }
 
 export function isRoomMedia(value: string) {

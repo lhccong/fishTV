@@ -18,6 +18,8 @@ html.dark .watch-room img,html.dark .watch-room video { filter:none !important; 
 .watch-actions { display:flex; flex-wrap:wrap; max-width:100%; align-items:center; flex-shrink:0; gap:20px; font-size:13px; color:#b6b7bf; }
 .watch-actions span,.watch-actions a { display:flex; align-items:center; gap:6px; }
 .watch-actions a:hover { color:#fff; }
+.watch-danger-action { border-color:#713843 !important; background:#3a2329 !important; color:#ff9eaa !important; }
+.watch-danger-action:hover { background:#542b34 !important; }
 .watch-actions { position:relative; }
 .watch-invite summary { display:flex; align-items:center; gap:6px; padding:9px 12px; border:1px solid #424348; border-radius:6px; background:#2a2b2e; color:#e7e7e9; cursor:pointer; list-style:none; white-space:nowrap; }
 .watch-invite summary::-webkit-details-marker { display:none; }
@@ -46,6 +48,20 @@ html.dark .watch-room img,html.dark .watch-room video { filter:none !important; 
 .watch-source>span { display:flex; align-items:center; gap:8px; padding:0 6px; }
 .watch-source>span>svg { width:14px; height:14px; color:#80b9ac; }
 .watch-source select { margin-top:12px; padding:9px 10px; font-size:12px; min-height:38px; background:#25272b; border-color:#393c43; }
+.watch-play-mode { display:block; font-size:11px; color:#9397a1; margin:16px 4px 0; }
+.watch-play-mode>span { display:flex; align-items:center; gap:8px; padding:0 6px; }
+.watch-play-mode>span>svg { width:14px; height:14px; color:#e3a66b; }
+.watch-play-mode select { margin-top:10px; padding:9px 10px; font-size:12px; min-height:38px; background:#25272b; border-color:#393c43; }
+.watch-episodes { margin:22px 4px 0; padding-top:20px; border-top:1px solid #303237; }
+.watch-episodes .watch-section-label { margin:0 6px 12px; }
+.watch-episodes .watch-section-label span { margin-left:auto; color:#747985; font-size:11px; font-weight:400; }
+.watch-episode-list { display:grid; gap:5px; max-height:260px; overflow-y:auto; padding-right:3px; scrollbar-width:thin; scrollbar-color:#4a4d55 transparent; }
+.watch-episode-list button { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:34px; padding:7px 9px; border-color:transparent; background:transparent; color:#aeb2bd; font-size:12px; text-align:left; }
+.watch-episode-list button:hover:not(:disabled) { background:#292b30; color:#f3f4f6; }
+.watch-episode-list button.is-current { background:#3a252c; border-color:#68404a; color:#ff9aa7; }
+.watch-episode-list button:disabled { opacity:.4; cursor:not-allowed; }
+.watch-episode-list button span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.watch-episode-list button small { flex-shrink:0; color:#777c87; font-size:10px; }
 .watch-roster summary { border-color:transparent; background:transparent; padding:4px; gap:10px; min-height:40px; }
 .watch-actions .watch-avatar-stack { display:flex; gap:0; padding-left:0; }
 .watch-actions .watch-member-avatar,.watch-actions .watch-member-more { display:flex; align-items:center; justify-content:center; width:32px; height:32px; flex-shrink:0; border-radius:50%; border:2px solid #202123; background:#355b64; color:#e9f7fa; font-size:12px; overflow:hidden; }
@@ -174,11 +190,14 @@ html.dark .watch-room img,html.dark .watch-room video { filter:none !important; 
   .watch-guest { grid-template-rows:minmax(0,1fr) minmax(150px,.85fr); }
   .watch-catalog-nav { border-right:0; padding:14px 16px; border-bottom:1px solid #343538; }
   .watch-catalog-nav>.watch-section-label { display:none; }
+  .watch-episodes { display:none; }
   .watch-catalog-nav nav { grid-template-columns:repeat(5,minmax(0,1fr)); }
   .watch-catalog-nav nav button { padding:8px 0; gap:5px; justify-content:center; font-size:12px; min-height:38px; }
   .watch-catalog-nav nav button>svg { width:15px; height:15px; }
   .watch-source { display:flex; align-items:center; gap:12px; margin:12px 0 0; padding:0; border-top:0; white-space:nowrap; }
   .watch-source select { margin:0; flex:1; padding:8px; }
+  .watch-play-mode { display:flex; align-items:center; gap:12px; margin:12px 0 0; white-space:nowrap; }
+  .watch-play-mode select { margin:0; flex:1; padding:8px; }
   .watch-chat { border-left:0; border-top:1px solid #35363b; }
   .watch-chat-heading { padding:12px 16px; }
   .watch-chat-form { padding:10px 12px; }
