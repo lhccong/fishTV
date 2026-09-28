@@ -5,7 +5,7 @@ import '../account.css';
 
 export default function SetupPage({ onComplete }: { onComplete: () => void }) {
   const [form, setForm] = useState({
-    redisUrl: 'redis://127.0.0.1:6379/0', siteOrigin: window.location.origin,
+    redisUrl: '', siteOrigin: window.location.origin,
     clientId: '', clientSecret: '', username: 'admin', password: '',
   });
   const [token, setToken] = useState('');
@@ -55,8 +55,10 @@ export default function SetupPage({ onComplete }: { onComplete: () => void }) {
             </section>
             <section className="account-section">
               <h2><HiDatabase />Redis</h2>
-              <label>连接地址<input required type="password" autoComplete="off" maxLength={2048} {...field('redisUrl')} /></label>
-              <p className="account-help">Docker Compose 内置 Redis 地址：redis://redis:6379/0</p>
+              <label>连接地址<input required type="text" inputMode="url" autoComplete="off" maxLength={2048}
+                placeholder="redis://用户名:密码@Redis地址:6379/0" {...field('redisUrl')} /></label>
+              <p className="account-help">请填写你自己部署的 Redis 地址。Docker 容器内的 127.0.0.1 指向容器自身，不是宿主机 Redis。</p>
+              <p className="account-help">示例：redis://:密码@192.168.1.20:6379/0，或使用 rediss:// 开启 TLS。</p>
             </section>
             <section className="account-section">
               <h2>摸鱼岛登录</h2>
