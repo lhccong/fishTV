@@ -372,7 +372,7 @@ html:not(.dark) .watch-waiting-dots { color:#dc2626; }
 .watch-room .watch-dplayer button.dplayer-mobile-play { padding:0; border:0; border-radius:0; background:transparent; color:#fff; }
 .watch-room .watch-dplayer button.dplayer-mobile-play { display:none; }
 .watch-room .watch-dplayer.dplayer-mobile:not(.dplayer-hide-controller) button.dplayer-mobile-play { display:block; }
-.watch-dplayer .dplayer-controller .dplayer-icons-left { max-width:calc(100% - 182px); }
+.watch-dplayer .dplayer-controller .dplayer-icons-left { max-width:calc(100% - 246px); }
 .watch-dplayer .dplayer-controller .dplayer-icons .dplayer-time { font-size:12px; }
 @media(max-width:480px) {
   .watch-dplayer .dplayer-controller { left:8px; right:8px; }
@@ -403,6 +403,7 @@ html:not(.dark) .watch-room .watch-player-tools button[aria-pressed=true] { colo
 .watch-room .watch-dplayer .dplayer-controller .watch-player-tools button[aria-pressed=true],
 .watch-room .watch-dplayer .dplayer-controller .watch-player-tools button[aria-expanded=true] { color:#ffc3cd; }
 .watch-room .watch-dplayer .dplayer-controller .watch-player-tools button:hover { background:#ffffff1a; }
+.watch-room .watch-dplayer .dplayer-controller .watch-player-tools button:disabled { opacity:.4; cursor:not-allowed; }
 .watch-rate-control { position:relative; flex:none; }
 .watch-room .watch-dplayer .dplayer-controller .watch-player-tools .watch-rate-trigger { width:54px; gap:4px; font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; }
 .watch-room .watch-dplayer .dplayer-controller .watch-player-tools .watch-rate-trigger svg { width:12px; height:12px; opacity:.6; transition:transform .15s; }
@@ -430,7 +431,14 @@ html:not(.dark) .watch-room .watch-player-tools button[aria-pressed=true] { colo
   .watch-room .watch-dplayer .dplayer-controller .watch-player-tools button { width:28px; }
   .watch-room .watch-dplayer .dplayer-controller .watch-player-tools .watch-rate-trigger { width:50px; }
   .watch-room .watch-dplayer .dplayer-controller .watch-player-tools .watch-rate-option { width:100%; }
-  .watch-room .watch-dplayer .dplayer-controller .dplayer-icons-left { max-width:calc(100% - 162px); }
+  .watch-room .watch-dplayer .dplayer-controller .dplayer-icons-left { max-width:calc(100% - 218px); }
+}
+@container(max-width:400px) {
+  .watch-room .watch-dplayer .dplayer-controller { height:80px; }
+  .watch-room .watch-dplayer .dplayer-controller .dplayer-icons-left { max-width:100%; bottom:38px; }
+  .watch-room .watch-dplayer .dplayer-controller .dplayer-icons-right { bottom:0; }
+  .watch-room .watch-floating-chat { bottom:96px; height:min(400px, calc(100% - 112px)); }
+  .watch-room .watch-rate-error { bottom:96px; }
 }
 .watch-rate-error { position:absolute; bottom:58px; left:12px; right:12px; z-index:6; padding:8px 12px; background:#291e24ed; color:#ffc3cd; font-size:12px; border-radius:4px; }
 @media(max-width:480px) {

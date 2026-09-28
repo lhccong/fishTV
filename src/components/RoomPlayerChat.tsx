@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { HiOutlineAnnotation, HiOutlineChatAlt2, HiOutlineArrowsExpand, HiChatAlt2, HiChevronDown, HiUserCircle, HiOutlineX, HiOutlineCog } from 'react-icons/hi';
+import { TbPictureInPicture, TbPictureInPictureOff, TbViewportWide } from 'react-icons/tb';
 import type { RoomChatMessage, RoomSummary } from '../hooks/useRoomSocket';
 import Tooltip from './Tooltip';
 import RoomDanmaku from './RoomDanmaku';
@@ -27,6 +28,14 @@ type Props = {
   onPlaybackRateChange: (rate: number) => void;
   fullscreen: boolean;
   onFullscreen: () => void;
+  nativeFullscreen: boolean;
+  theater: boolean;
+  onTheater: () => void;
+  pip: boolean;
+  pipSupported: boolean;
+  pipReady: boolean;
+  displayBusy: boolean;
+  onPip: () => void;
   connected: boolean;
   userId?: string;
   messages: RoomChatMessage[];
@@ -34,7 +43,7 @@ type Props = {
   sendChat: (text: string) => Promise<{ success: boolean; error?: string }>;
 };
 
-export default function RoomPlayerChat({ controls, playMode, canSetPlayMode, playModeBusy, onPlayModeChange, playbackRate, canSetPlaybackRate, rateBusy, onPlaybackRateChange, fullscreen, onFullscreen, connected, userId, messages, liveMessages, sendChat }: Props) {
+export default function RoomPlayerChat({ controls, playMode, canSetPlayMode, playModeBusy, onPlayModeChange, playbackRate, canSetPlaybackRate, rateBusy, onPlaybackRateChange, fullscreen, onFullscreen, nativeFullscreen, theater, onTheater, pip, pipSupported, pipReady, displayBusy, onPip, connected, userId, messages, liveMessages, sendChat }: Props) {
   const [open, setOpen] = useState(false);
   const [danmaku, setDanmaku] = useState(true);
   const scroll = useRef<HTMLDivElement>(null);
@@ -80,7 +89,13 @@ export default function RoomPlayerChat({ controls, playMode, canSetPlayMode, pla
         canChange={canSetPlayMode} connected={connected} busy={playModeBusy} onChange={onPlayModeChange}>
         <HiOutlineCog aria-hidden="true" />
       </RoomPlayerMenu>
-      <Tooltip label={`${fullscreen ? '退出全屏' : '全屏观看'} (F)`}><button aria-label={fullscreen ? '退出全屏' : '全屏观看'} aria-keyshortcuts="f" onClick={onFullscreen}>{fullscreen ? <HiOutlineX /> : <HiOutlineArrowsExpand />}</button></Tooltip>
+      <Tooltip label={!pipSupported ? '当前浏览器不支持画中画' : !pipReady && !pip ? '视频加载后可开启画中画' : pip ? '退出画中画' : '画中画'}>
+        <button type="button" aria-label={pip ? '退出画中画' : '画中画'} aria-pressed={pip} disabled={displayBusy || !pipSupported || (!pipReady && !pip)} onClick={onPip}>{pip ? <TbPictureInPictureOff /> : <TbPictureInPicture />}</button>
+      </Tooltip>
+      <Tooltip label={theater ? '退出网页全屏' : '网页全屏'}>
+        <button type="button" aria-label={theater ? '退出网页全屏' : '网页全屏'} aria-pressed={theater} disabled={displayBusy} onClick={onTheater}>{theater ? <HiOutlineX /> : <TbViewportWide />}</button>
+      </Tooltip>
+      <Tooltip label={`${nativeFullscreen ? '退出全屏' : '全屏观看'} (F)`}><button aria-label={nativeFullscreen ? '退出全屏' : '全屏观看'} aria-keyshortcuts="f" disabled={displayBusy} onClick={onFullscreen}>{nativeFullscreen ? <HiOutlineX /> : <HiOutlineArrowsExpand />}</button></Tooltip>
     </div>, controls)}
     {open && <section className="watch-floating-chat" aria-label="播放器聊天室">
       <header className="watch-floating-heading"><strong><HiChatAlt2 />聊天室</strong>

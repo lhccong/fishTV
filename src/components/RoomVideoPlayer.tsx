@@ -30,6 +30,12 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, playM
   const container = useRef<HTMLDivElement>(null);
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
   const [theater, setTheater] = useState(false);
+  const [pip, setPip] = useState(false);
+  const [pipSupported, setPipSupported] = useState(false);
+  const [pipReady, setPipReady] = useState(false);
+  const [displayBusy, setDisplayBusy] = useState(false);
+  const [displayError, setDisplayError] = useState('');
+  const displayPending = useRef(false);
   const fullscreen = nativeFullscreen || theater;
   const live = useRef({ playback, owner, connected, onClock, onEnded });
   live.current = { playback, owner, connected, onClock, onEnded };
@@ -79,21 +85,81 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, playM
 
   useEffect(() => {
     if (!theater) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setTheater(false); };
     document.addEventListener('keydown', escape);
-    return () => document.removeEventListener('keydown', escape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', escape);
+    };
   }, [theater]);
 
   const toggleFullscreen = async () => {
-    if (document.fullscreenElement === container.current) {
-      try { await document.exitFullscreen(); } catch { /* Keep the exit control available. */ }
-      return;
+    const host = container.current;
+    if (!host || displayPending.current) return;
+    displayPending.current = true;
+    setDisplayBusy(true); setDisplayError('');
+    try {
+      if (document.fullscreenElement === host) {
+        await document.exitFullscreen();
+      } else {
+        if (element.current && document.pictureInPictureElement === element.current) await document.exitPictureInPicture();
+        if (!host.isConnected) return;
+        if (!document.fullscreenEnabled || !host.requestFullscreen) { setTheater(value => !value); return; }
+        await host.requestFullscreen();
+        if (host.isConnected) setTheater(false);
+      }
+    } catch {
+      if (host.isConnected) setDisplayError('全屏切换失败，请重试或使用网页全屏');
+    } finally {
+      displayPending.current = false;
+      if (host.isConnected) setDisplayBusy(false);
     }
-    if (theater) { setTheater(false); return; }
-    // Page-wide mode preserves the chat overlay where element fullscreen is unavailable.
-    if (!document.fullscreenEnabled || !container.current?.requestFullscreen) { setTheater(true); return; }
-    try { await container.current.requestFullscreen(); }
-    catch { setTheater(true); }
+  };
+
+  const toggleTheater = async () => {
+    const host = container.current;
+    if (!host || displayPending.current) return;
+    displayPending.current = true;
+    setDisplayBusy(true); setDisplayError('');
+    try {
+      if (document.fullscreenElement === host) await document.exitFullscreen();
+      if (element.current && document.pictureInPictureElement === element.current) await document.exitPictureInPicture();
+      if (host.isConnected) setTheater(value => !value);
+    } catch {
+      if (host.isConnected) setDisplayError('网页全屏切换失败，请重试');
+    } finally {
+      displayPending.current = false;
+      if (host.isConnected) setDisplayBusy(false);
+    }
+  };
+
+  const togglePip = async () => {
+    const video = element.current;
+    if (!video || displayPending.current || !pipSupported) return;
+    if (document.pictureInPictureElement !== video && !pipReady) return;
+    displayPending.current = true;
+    setDisplayBusy(true); setDisplayError('');
+    try {
+      if (document.pictureInPictureElement === video) {
+        await document.exitPictureInPicture();
+      } else {
+        // Request directly from the click to retain the browser's user activation.
+        await video.requestPictureInPicture();
+        if (element.current !== video) {
+          if (document.pictureInPictureElement === video) await document.exitPictureInPicture();
+          return;
+        }
+        setTheater(false);
+        if (document.fullscreenElement === container.current) await document.exitFullscreen();
+      }
+    } catch {
+      if (element.current === video) setDisplayError('画中画切换失败，请重试');
+    } finally {
+      displayPending.current = false;
+      if (element.current) setDisplayBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -114,6 +180,15 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, playM
     element.current = video;
     video.setAttribute('aria-label', '共同播放视频');
     video.playsInline = true;
+    setPip(false); setPipReady(false); setDisplayError('');
+    setPipSupported(Boolean(document.pictureInPictureEnabled && video.requestPictureInPicture));
+    const updatePipReady = () => setPipReady(video.readyState >= 2 && video.videoWidth > 0 && !video.disablePictureInPicture);
+    const enteredPip = () => setPip(true);
+    const leftPip = () => setPip(false);
+    video.addEventListener('loadeddata', updatePipReady);
+    video.addEventListener('emptied', updatePipReady);
+    video.addEventListener('enterpictureinpicture', enteredPip);
+    video.addEventListener('leavepictureinpicture', leftPip);
     const tools = document.createElement('div');
     host.querySelector('.dplayer-icons-right')!.appendChild(tools);
     setControls(tools);
@@ -230,6 +305,14 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, playM
       video.removeEventListener('ended', ended);
       video.removeEventListener('error', failure);
       video.removeEventListener('ratechange', restoreRate);
+      video.removeEventListener('loadeddata', updatePipReady);
+      video.removeEventListener('emptied', updatePipReady);
+      video.removeEventListener('enterpictureinpicture', enteredPip);
+      video.removeEventListener('leavepictureinpicture', leftPip);
+      if (document.pictureInPictureElement === video) {
+        // Removing the media below also terminates PiP if the explicit exit races with the browser.
+        void document.exitPictureInPicture().catch(() => {});
+      }
       hls?.destroy();
       setControls(null);
       element.current = null;
@@ -246,12 +329,14 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, playM
         }
       }} />
     <RoomPlayerChat controls={controls} fullscreen={fullscreen} onFullscreen={() => void toggleFullscreen()} connected={connected}
+      nativeFullscreen={nativeFullscreen} theater={theater} onTheater={() => void toggleTheater()}
+      pip={pip} pipSupported={pipSupported} pipReady={pipReady} displayBusy={displayBusy} onPip={() => void togglePip()}
       playMode={playMode} canSetPlayMode={owner} playModeBusy={playModeBusy}
       onPlayModeChange={mode => void changePlayMode(mode)}
       playbackRate={normalizePlaybackRate(playback.playbackRate)} canSetPlaybackRate={canSetPlaybackRate}
       rateBusy={rateBusy} onPlaybackRateChange={rate => void changePlaybackRate(rate)}
       messages={messages} liveMessages={liveMessages} userId={userId} sendChat={sendChat} />
-    {(rateError || playModeError) && <p className="watch-rate-error" role="alert">{rateError || playModeError}</p>}
+    {(displayError || rateError || playModeError) && <p className="watch-rate-error" role="alert">{displayError || rateError || playModeError}</p>}
     {blocked && !error && <button className="watch-unlock" onClick={() => {
       void element.current?.play().then(() => setBlocked(false)).catch(() => setBlocked(true));
     }}><HiPlay />点击开始观看</button>}
