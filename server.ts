@@ -3,10 +3,12 @@ import compression from 'compression';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { createServer } from 'node:http';
 import { mountServices } from './server/bootstrap.js';
 import { requireUser } from './server/userAuth.js';
 import { apiError } from './server/security.js';
 import { videoSourceProxy } from './server/videoProxy.js';
+import { mountSocketServer } from './server/socket.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,7 +79,9 @@ app.use((req, res) => {
 });
 
 // 启动服务器
-app.listen(PORT, () => {
+const httpServer = createServer(app);
+mountSocketServer(httpServer);
+httpServer.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
   console.log(`📁 Serving static files from: ${path.join(__dirname, 'dist')}`);
   console.log(`📡 API proxies configured:`);

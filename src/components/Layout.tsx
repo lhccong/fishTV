@@ -1,5 +1,4 @@
 import React, { type ReactNode } from 'react';
-import Sidebar from './Sidebar';
 import Header from './Header';
 import Footer from './Footer';
 
@@ -9,16 +8,11 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   return (
-    <div className="flex min-h-screen bg-[#f3f8f8]">
-      {/* 只在桌面端显示侧边栏 */}
-      <div className="hidden lg:block fixed left-0 top-0 h-screen w-[220px]">
-        <Sidebar />
-      </div>
-
-      <div className="flex-1 lg:ml-[220px]">
+    <div className="app-shell flex min-h-screen">
+      <div className="min-w-0 flex-1">
         <Header />
         
-        <main className="w-full max-w-[1500px] mx-auto px-2 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
+        <main className="w-full max-w-[1500px] mx-auto px-3 sm:px-6 md:px-8 py-5 sm:py-7 md:py-9">
           {children}
         </main>
 

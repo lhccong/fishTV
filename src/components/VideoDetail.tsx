@@ -36,11 +36,11 @@ const VideoDetail = ({
   const episodes = Array.from({ length: episodeCount }, (_, i) => i + 1);
 
   return (
-    <div className="bg-[#f3f8f8] pt-6">
+    <div className="pt-2">
       {/* Video header section */}
-      <div className="bg-white rounded-lg overflow-hidden mb-6">
+      <div className="app-surface rounded-3xl overflow-hidden mb-6 shadow-xl shadow-black/10">
         <div className="p-6">
-          <h1 className="text-2xl font-bold mb-4 text-gray-800 border-l-4 border-primary pl-3">
+          <h1 className="text-2xl font-bold mb-4 border-l-4 border-primary pl-3">
             {title}
           </h1>
 
@@ -93,7 +93,7 @@ const VideoDetail = ({
       </div>
 
       {/* Episode selection */}
-      <div className="bg-white rounded-lg p-6 mb-6">
+      <div className="app-surface rounded-3xl p-6 mb-6 shadow-xl shadow-black/10">
         <div className="mb-4 border-b border-gray-200 pb-2">
           <h2 className="text-lg font-semibold">选集播放</h2>
 

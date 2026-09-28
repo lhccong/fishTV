@@ -1,4 +1,5 @@
 import express from 'express';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer as createViteServer } from 'vite';
 import compression from 'compression';
 import { createProxyMiddleware } from 'http-proxy-middleware';
@@ -6,9 +7,11 @@ import { mountServices } from './server/bootstrap.js';
 import { requireUser } from './server/userAuth.js';
 import { apiError } from './server/security.js';
 import { videoSourceProxy } from './server/videoProxy.js';
+import { mountSocketServer } from './server/socket.js';
 
 async function createServer() {
   const app = express();
+  const httpServer = createHttpServer(app);
   const PORT = process.env.PORT || 3000;
 
   // 中间件
@@ -60,7 +63,7 @@ async function createServer() {
 
   // 创建 Vite 服务器（开发模式）
   const vite = await createViteServer({
-    server: { middlewareMode: true },
+    server: { middlewareMode: true, hmr: { server: httpServer } },
     appType: 'spa',
   });
 
@@ -68,7 +71,8 @@ async function createServer() {
   app.use(vite.middlewares);
 
   // 启动服务器
-  app.listen(PORT, () => {
+  mountSocketServer(httpServer);
+  httpServer.listen(PORT, () => {
     console.log(`🚀 Dev server is running on http://localhost:${PORT}`);
     console.log(`📡 API proxies configured:`);
     Object.entries(proxyConfig).forEach(([path, config]) => {

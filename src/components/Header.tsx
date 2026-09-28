@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { HiSearch, HiClock, HiHome, HiX, HiTrash } from 'react-icons/hi';
+import { HiSearch, HiClock, HiX, HiTrash } from 'react-icons/hi';
 import { useHistory } from '../context/HistoryContext';
 import { useSearchHistory } from '../context/SearchHistoryContext';
 import ThemeToggle from './ThemeToggle';
 import AccountMenu from './AccountMenu';
+import TopNavigation from './TopNavigation';
 
 const Header = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,26 +69,24 @@ const Header = () => {
   }, []);
 
   return (
-    <header className="bg-white shadow-sm sticky top-0 z-30">
-      <div className="w-full px-2 sm:px-4 py-3">
-        <div className="flex items-center justify-between gap-2">
-          {/* 手机端返回首页按钮 */}
-          <Link to="/" className="home-button lg:hidden">
-            <HiHome className="icon" />
-          </Link>
+    <header className="app-header sticky top-0 z-30 border-b border-white/5 bg-black/20 backdrop-blur-xl">
+      <div className="header-grid">
+          <TopNavigation />
 
           {/* 搜索框 */}
-          <form onSubmit={handleSearch} className="flex-1 min-w-0 max-w-[700px]">
+          <form onSubmit={handleSearch} className="header-search" role="search">
             <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
               <input
                 type="text"
+                aria-label="搜索影片"
                 placeholder="搜索电影、电视剧、动漫..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-2 pl-10 pr-4 rounded-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                className="header-search-input"
               />
               <button
                 type="submit"
+                aria-label="搜索"
                 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
                 <HiSearch className="w-5 h-5" />
@@ -105,6 +104,8 @@ const Header = () => {
                       <span>搜索历史</span>
                     </div>
                     <button
+                      type="button"
+                      aria-label="清空搜索历史"
                       onClick={() => {
                         if (window.confirm('确定要清空所有搜索历史吗？')) {
                           clearHistory();
@@ -129,6 +130,8 @@ const Header = () => {
                           <span className="text-sm">{item.query}</span>
                         </div>
                         <button
+                          type="button"
+                          aria-label="删除搜索记录"
                           onClick={(e) => {
                             e.stopPropagation();
                             removeFromSearchHistory(index);
@@ -146,7 +149,8 @@ const Header = () => {
           </form>
 
           {/* 导航工具按钮 */}
-          <div className="flex items-center gap-2">
+          <div className="header-user-tools">
+            <Link to="/rooms" className="shrink-0 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-300 transition hover:bg-red-500/20">房间</Link>
             {/* 历史记录按钮 */}
             <div className="relative" onMouseEnter={handleWatchHistoryMouseEnter} onMouseLeave={handleWatchHistoryMouseLeave}>
               <Link
@@ -161,7 +165,7 @@ const Header = () => {
               {showWatchHistory && history.length > 0 && (
                 <div
                   ref={watchHistoryRef}
-                  className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
+                  className="header-history absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
                 >
                   <div className="p-2">
                     {history.slice(0, 5).map((item) => (
@@ -204,7 +208,6 @@ const Header = () => {
             <ThemeToggle />
             <AccountMenu />
           </div>
-        </div>
       </div>
     </header>
   );

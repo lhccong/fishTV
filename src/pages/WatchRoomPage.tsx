@@ -1,0 +1,238 @@
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { HiArrowLeft, HiChatAlt2, HiFilm, HiLogout, HiPlay, HiSearch, HiUserCircle, HiUserGroup, HiDesktopComputer, HiSparkles, HiMicrophone, HiVideoCamera, HiServer } from 'react-icons/hi';
+import { useCurrentUser } from '../context/AccessGate';
+import { useRoomSocket } from '../hooks/useRoomSocket';
+import { VIDEO_SOURCES } from '../api/config';
+import { getVideoDetail, getVideoList } from '../api/video';
+import type { Video } from '../api/types';
+import { isRoomMedia, roomEpisodes } from '../lib/roomVideo';
+import RoomVideoPlayer from '../components/RoomVideoPlayer';
+import RoomInvite from '../components/RoomInvite';
+import RoomPasswordSettings from '../components/RoomPasswordSettings';
+import RoomMembers from '../components/RoomMembers';
+import '../watch-room.css';
+
+const categories = [{ id: 6, name: '电影', icon: HiFilm }, { id: 13, name: '电视剧', icon: HiDesktopComputer }, { id: 29, name: '动漫', icon: HiSparkles }, { id: 25, name: '综艺', icon: HiMicrophone }, { id: 36, name: '短剧', icon: HiVideoCamera }];
+
+export default function WatchRoomPage() {
+  const { roomId = '' } = useParams();
+  const navigate = useNavigate();
+  const user = useCurrentUser();
+  const { room, playback, messages, liveMessages, connected, joinFailure, error: socketError, joinRoom, leaveRoom, setRoomPlayback, setPlaybackClock, sendChat } = useRoomSocket();
+  const joined = room?.id === roomId.toUpperCase();
+  const owner = joined && room.ownerId === user?.id;
+  const [activePanel, setActivePanel] = useState<'invite' | 'password' | 'members' | null>(null);
+  const actions = useRef<HTMLElement>(null);
+  const [joinError, setJoinError] = useState('');
+  const [joinAttempt, setJoinAttempt] = useState(0);
+  const [roomPassword, setRoomPassword] = useState('');
+  const [joiningWithPassword, setJoiningWithPassword] = useState(false);
+  const passwordRequired = joinFailure?.roomId === roomId.toUpperCase() &&
+    ['ROOM_PASSWORD_REQUIRED', 'ROOM_PASSWORD_INVALID'].includes(joinFailure.code || '');
+  const roomRemoved = joinFailure?.roomId === roomId.toUpperCase() && joinFailure.code === 'ROOM_REMOVED';
+  const [source, setSource] = useState(Object.keys(VIDEO_SOURCES)[0] || '');
+  const [category, setCategory] = useState(6);
+  const [query, setQuery] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [results, setResults] = useState<Video[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<Video | null>(null);
+  const [selectedSource, setSelectedSource] = useState('');
+  const [episode, setEpisode] = useState(1);
+  const [picker, setPicker] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
+  const [media, setMedia] = useState<{ key: string; url: string; title: string } | null>(null);
+  const [mediaError, setMediaError] = useState('');
+  const [mediaAttempt, setMediaAttempt] = useState(0);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const chatScroll = useRef<HTMLDivElement>(null);
+  const followChat = useRef(true);
+  const mediaKey = playback ? `${playback.sourceId}:${playback.videoId}:${playback.episode}` : '';
+  const selection = roomEpisodes(selected || { vod_play_url: '' } as Video);
+
+  useEffect(() => { setActivePanel(null); }, [roomId, joined, owner]);
+  useEffect(() => {
+    if (!activePanel) return;
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !actions.current?.contains(target) || !target.closest('.watch-invite')) {
+        setActivePanel(null);
+      }
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [activePanel]);
+
+  useEffect(() => {
+    if (!connected || joined || passwordRequired || roomRemoved) return;
+    let cancelled = false;
+    setJoinError('');
+    void joinRoom(roomId).then(result => { if (!cancelled && !result.success) setJoinError(result.error || '加入房间失败'); });
+    return () => { cancelled = true; };
+  }, [connected, joined, joinRoom, roomId, joinAttempt, passwordRequired, roomRemoved]);
+
+  useEffect(() => { setRoomPassword(''); setJoinError(''); }, [roomId]);
+
+  useEffect(() => {
+    if (!owner || !VIDEO_SOURCES[source]) return;
+    let cancelled = false;
+    setSearching(true); setCatalogError(''); setSelected(null);
+    const timeout = window.setTimeout(() => { cancelled = true; setSearching(false); setCatalogError('片库加载超时，请重试'); }, 12000);
+    void getVideoList({ pg: page, t: keyword ? undefined : category, wd: keyword || undefined }, VIDEO_SOURCES[source].url)
+      .then(result => {
+        if (cancelled) return;
+        setResults(result.list || []); setPages(Math.max(1, Number(result.pagecount) || 1));
+      })
+      .catch(() => { if (!cancelled) { setResults([]); setCatalogError('片库加载失败，请重试或切换视频源'); } })
+      .finally(() => { clearTimeout(timeout); if (!cancelled) setSearching(false); });
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, [owner, source, category, keyword, page, catalogAttempt]);
+
+  useEffect(() => {
+    if (!joined || !playback) { setMedia(null); return; }
+    const current = playback;
+    const config = VIDEO_SOURCES[current.sourceId];
+    setMedia(null); setMediaError('');
+    if (!config) { setMediaError('当前视频源不可用，请房主重新选片'); return; }
+    let cancelled = false;
+    const timeout = window.setTimeout(() => { cancelled = true; setMediaError('影片加载超时，请重试'); }, 12000);
+    // Resolve the media through the configured catalogue, never navigate to a URL supplied by a member.
+    void getVideoDetail(current.videoId, config.url).then(result => {
+      if (cancelled) return;
+      const video = result.list?.[0];
+      const episode = video && roomEpisodes(video)[current.episode - 1];
+      if (!video || !episode || !isRoomMedia(episode.url)) { setMediaError('该集暂不支持共同播放，请房主切换影片'); return; }
+      setMedia({ key: mediaKey, url: episode.url, title: video.vod_name });
+    }).catch(() => { if (!cancelled) setMediaError('影片加载失败，请重试'); })
+      .finally(() => clearTimeout(timeout));
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, [joined, mediaKey, mediaAttempt]);
+
+  useEffect(() => {
+    const container = chatScroll.current;
+    if (container && followChat.current) container.scrollTop = container.scrollHeight;
+  }, [messages.length]);
+  const choose = async (video: Video) => {
+    setBusy(true); setError('');
+    try {
+      const result = await getVideoDetail(String(video.vod_id), VIDEO_SOURCES[source].url);
+      if (!result.list?.[0]) throw new Error('影片详情不存在');
+      setSelected(result.list[0]); setSelectedSource(source); setEpisode(1);
+    } catch { setError('影片详情加载失败，请重试'); }
+    finally { setBusy(false); }
+  };
+  const publish = async () => {
+    if (!selected || busy || !selection[episode - 1]) return;
+    setBusy(true); setError('');
+    const result = await setRoomPlayback({
+      videoId: String(selected.vod_id), sourceId: selectedSource, episode,
+      videoUrl: selection[episode - 1].url, title: selected.vod_name,
+      positionSeconds: 0, playing: true,
+    });
+    setBusy(false);
+    if (result.success) setPicker(false);
+    else setError(result.error || '共同播放失败，请重试');
+  };
+
+  return <main className="watch-room no-invert">
+    <header className="watch-header">
+      <div className="watch-brand"><img src="https://oss.cqbo.com/moyu/moyu.png" alt="摸鱼 TV" />
+        <div><h1>{joined ? room.name : '观影房间'}</h1><p>房间号 {roomId.toUpperCase()} <span className={connected ? 'watch-online' : ''}>{connected ? '已连接' : '连接中'}</span></p></div>
+      </div>
+      <nav ref={actions} className="watch-actions">
+        {joined ? <RoomMembers room={room} userId={user?.id} open={activePanel === 'members'} onOpenChange={open => setActivePanel(open ? 'members' : null)} /> : <span><HiUserGroup />0 人在线</span>}
+        {joined && <RoomInvite key={room.id} roomId={room.id} open={activePanel === 'invite'} onOpenChange={open => setActivePanel(open ? 'invite' : null)} />}
+        {owner && <RoomPasswordSettings key={room.id} open={activePanel === 'password'} onOpenChange={open => setActivePanel(open ? 'password' : null)} />}
+        <Link to="/rooms"><HiArrowLeft />房间大厅</Link>
+        <button disabled={!joined || !connected} onClick={async () => {
+          const result = await leaveRoom();
+          if (result.success) navigate('/rooms'); else setError(result.error || '退出失败');
+        }}><HiLogout />退出房间</button>
+      </nav>
+    </header>
+    {(error || socketError) && <p className="watch-error" role="alert">{error || socketError}</p>}
+    {!joined ? <section className="watch-wait"><HiFilm /><h2>{roomRemoved ? '房间已移除' : passwordRequired ? '输入房间密码' : joinError ? '无法进入房间' : '正在加入房间'}</h2>
+      {roomRemoved ? <><p role="alert">{joinFailure.error}</p><Link to="/rooms">返回放映室</Link></> : passwordRequired ? <form className="watch-password-form" onSubmit={async event => {
+        event.preventDefault(); if (joiningWithPassword) return;
+        setJoiningWithPassword(true); setJoinError('');
+        try {
+          const result = await joinRoom(roomId, roomPassword);
+          setRoomPassword('');
+          if (!result.success) setJoinError(result.error || '加入失败');
+        } finally { setJoiningWithPassword(false); }
+      }}>
+        <label>房间密码<input required autoFocus type="password" autoComplete="off" minLength={4} maxLength={64} value={roomPassword} onChange={event => setRoomPassword(event.target.value)} /></label>
+        <button className="watch-primary" disabled={!connected || joiningWithPassword} type="submit">{joiningWithPassword ? '正在加入...' : '加入房间'}</button>
+        {joinError && <p role="alert">{joinError}</p>}
+      </form> : joinError && <><p role="alert">{joinError}</p><button onClick={() => setJoinAttempt(value => value + 1)}>重试</button></>}</section> :
+      <div className={`watch-columns ${owner ? '' : 'watch-guest'}`}>
+        {owner && <aside className="watch-catalog-nav">
+          <div className="watch-section-label"><HiFilm />片库</div>
+          <nav aria-label="影片分类">{categories.map(item => <button key={item.id} aria-pressed={category === item.id && !keyword} onClick={() => { setCategory(item.id); setKeyword(''); setQuery(''); setPage(1); setPicker(true); }}><item.icon aria-hidden="true" /><span>{item.name}</span></button>)}</nav>
+          <label className="watch-source"><span><HiServer aria-hidden="true" />视频源</span><select value={source} onChange={event => { setSource(event.target.value); setPage(1); setPicker(true); }}>{Object.entries(VIDEO_SOURCES).map(([id, item]) => <option key={id} value={id}>{item.name}</option>)}</select></label>
+        </aside>}
+        <section className={`watch-main ${owner && (!playback || picker) ? 'watch-browsing' : ''}`}>
+          {playback && <div className="watch-now">
+            <div><span className="watch-kicker">共同观看</span><h2>{media?.title || playback.title || '正在加载影片'} <small>第 {playback.episode} 集</small></h2></div>
+            {owner && <button onClick={() => setPicker(value => !value)}><HiFilm />{picker ? '收起选片' : '更换影片'}</button>}
+          </div>}
+          {playback ? <>
+            {media?.key === mediaKey ? <RoomVideoPlayer key={mediaKey} url={media.url} playback={playback} owner={owner} connected={connected}
+              messages={messages} liveMessages={liveMessages} userId={user?.id} sendChat={sendChat}
+              onClock={async (position, playing, revision) => {
+                const result = await setPlaybackClock(position, playing, revision);
+                if (!result.success && result.code !== 'STALE_PLAYBACK') setError(result.error || '播放同步失败');
+              }} /> : <div className="watch-screen-empty"><HiFilm /><h2>{mediaError ? '暂时无法播放' : '正在加载影片'}</h2>{mediaError && <><p role="alert">{mediaError}</p><button onClick={() => setMediaAttempt(value => value + 1)}>重新加载</button></>}</div>}
+          </> : !owner && <div className="watch-screen-empty watch-awaiting"><HiFilm /><h2>暂无播放</h2><p>等待房主选片</p><span className="watch-waiting-dots" aria-hidden="true">● ● ●</span></div>}
+          {owner && (!playback || picker) && <section className="watch-picker">
+            <div className="watch-picker-heading"><h2>选片</h2><span>{keyword ? '搜索结果' : categories.find(item => item.id === category)?.name}</span></div>
+            <form className="watch-search" onSubmit={event => { event.preventDefault(); setKeyword(query.trim()); setPage(1); setCatalogAttempt(value => value + 1); }}>
+              <HiSearch /><input aria-label="搜索影片" placeholder="搜索电影、电视剧、动漫..." maxLength={100} value={query} onChange={event => setQuery(event.target.value)} /><button type="submit">搜索</button>
+            </form>
+            {selected && <div className="watch-selection">
+              <img src={selected.vod_pic} alt="" onError={event => { event.currentTarget.style.visibility = 'hidden'; }} />
+              <div><h3>{selected.vod_name}</h3><p>{selected.vod_year} · {selected.vod_area}</p>
+                {selection.length ? <label>集数<select aria-label="选择集数" value={episode} onChange={event => setEpisode(Number(event.target.value))}>{selection.map((item, index) => <option key={index} value={index + 1} disabled={!isRoomMedia(item.url)}>{item.name}</option>)}</select></label> : <p role="alert">该影片暂不支持共同播放，请切换视频源</p>}
+                <button className="watch-primary" disabled={busy || !connected || !isRoomMedia(selection[episode - 1]?.url || '')} onClick={() => void publish()}><HiPlay />共同播放</button>
+              </div>
+            </div>}
+            {searching ? <p className="watch-empty" role="status">正在加载片库...</p> : catalogError ? <div className="watch-empty"><p role="alert">{catalogError}</p><button onClick={() => setCatalogAttempt(value => value + 1)}>重试</button></div> : !results.length ? <p className="watch-empty">暂无影片</p> :
+              <div className="watch-film-grid">{results.map(video => <button key={video.vod_id} className="watch-film" disabled={busy} onClick={() => void choose(video)}>
+                <div className="watch-poster"><HiFilm /><img src={video.vod_pic} alt="" loading="lazy" onError={event => { event.currentTarget.style.visibility = 'hidden'; }} /><span>{video.vod_year || video.type_name}</span></div>
+                <strong>{video.vod_name}</strong><small>{video.vod_area || video.type_name}</small>
+              </button>)}</div>}
+            <div className="watch-pagination"><button disabled={page <= 1 || searching} onClick={() => setPage(value => value - 1)}>上一页</button><span>{page} / {pages}</span><button disabled={page >= pages || searching} onClick={() => setPage(value => value + 1)}>下一页</button></div>
+          </section>}
+        </section>
+        <aside className="watch-chat">
+          <div className="watch-chat-heading"><h2><HiChatAlt2 />聊天室</h2><span>{room.memberCount} 人</span></div>
+          <div className="watch-messages" ref={chatScroll} role="log" aria-label="聊天消息" onScroll={event => {
+            const container = event.currentTarget;
+            followChat.current = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+          }}>
+            {messages.length === 0 && <div className="watch-chat-empty"><HiChatAlt2 /><p>暂无消息</p></div>}
+            {messages.map(message => <article className={`watch-message ${message.userId === user?.id ? 'watch-message-self' : ''}`} key={message.id}>
+              {message.avatarUrl ? <img src={message.avatarUrl} alt="" referrerPolicy="no-referrer" /> : <HiUserCircle />}
+              <div className="watch-message-content">
+                <header><strong>{message.username}</strong></header>
+                <p>{message.text}</p>
+                <time dateTime={new Date(message.createdAt).toISOString()}>{new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>
+              </div>
+            </article>)}
+          </div>
+          <form className="watch-chat-form" onSubmit={async event => {
+            event.preventDefault(); if (!text.trim() || sending) return;
+            setSending(true); const result = await sendChat(text); setSending(false);
+            if (result.success) setText(''); else setError(result.error || '消息发送失败');
+          }}><input aria-label="聊天内容" maxLength={500} value={text} onChange={event => setText(event.target.value)} placeholder="聊聊这部影片..." /><button className="watch-primary" disabled={!connected || sending || !text.trim()} type="submit">发送</button></form>
+        </aside>
+      </div>}
+  </main>;
+}

@@ -1,14 +1,24 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
-import { HiLogout, HiSave, HiRefresh, HiLogin } from 'react-icons/hi';
+import { Link, useSearchParams } from 'react-router-dom';
+import { HiLogout, HiSave, HiRefresh, HiLogin, HiChartBar, HiUserGroup, HiFilm, HiCog, HiShieldCheck } from 'react-icons/hi';
 import { AccountError, accountRequest, jsonBody } from '../api/account';
+import AdminRooms from '../components/AdminRooms';
 import '../account.css';
 
 type Overview = { username: string; redis: { connected: boolean }; server: { uptimeSeconds: number } };
 type Config = { siteOrigin: string; clientId: string; clientSecretConfigured: boolean; callbackUrl: string; redisConfigured: boolean };
 type VideoSource = { id: string; name: string; url: string; enabled: boolean; builtIn?: boolean; proxyUrl: string };
+const sections = [
+  { id: 'overview', label: '运行概览', icon: HiChartBar },
+  { id: 'rooms', label: '房间管理', icon: HiUserGroup },
+  { id: 'sources', label: '视频源', icon: HiFilm },
+  { id: 'settings', label: '站点配置', icon: HiCog },
+  { id: 'account', label: '管理员账号', icon: HiShieldCheck },
+];
 
 export default function AdminPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const active = sections.find(section => section.id === searchParams.get('view')) || sections[0];
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
@@ -154,18 +164,36 @@ export default function AdminPage() {
     </div>
   </main>;
 
-  return <main className="account-page"><div className="account-shell">
+  return <main className="account-page account-admin"><div className="account-shell account-admin-shell">
     <header className="account-heading">
       <img src="https://oss.cqbo.com/moyu/moyu.png" alt="" width="40" height="40" /><div><h1>摸鱼TV 后台</h1><Link to="/" className="account-link">返回主站</Link></div>
       <button style={{ marginLeft: 'auto' }} className="account-secondary" disabled={Boolean(busy)} onClick={logout}><HiLogout />退出</button>
     </header>
+    <div className="account-admin-layout">
+    <nav className="account-nav" aria-label="后台菜单">
+      {sections.map(section => <button key={section.id} type="button" aria-current={active.id === section.id ? 'page' : undefined} disabled={Boolean(busy)} onClick={() => {
+        setSearchParams({ view: section.id });
+        setMessage('');
+        setSecret(''); setConfigPassword(''); setCurrentPassword(''); setNewPassword('');
+      }}><section.icon />{section.label}</button>)}
+    </nav>
+    <div className="account-admin-content">
     {notice}
+    {active.id === 'overview' && <section className="account-overview">
+    <div className="account-rooms-heading"><h2>运行概览</h2><button className="account-secondary" disabled={Boolean(busy)} onClick={() => void run('load', load)}><HiRefresh />刷新</button></div>
     <dl className="account-metrics">
       <div><dt>管理员</dt><dd>{overview?.username}</dd></div>
       <div><dt>Redis</dt><dd className="account-success">{overview?.redis.connected ? '已连接' : '不可用'}</dd></div>
       <div><dt>运行时间</dt><dd>{Math.floor((overview?.server.uptimeSeconds || 0) / 60)} 分钟</dd></div>
     </dl>
-    <form onSubmit={saveConfig} className="account-section"><fieldset disabled={Boolean(busy) || !config}>
+    <dl className="account-metrics">
+      <div><dt>视频源</dt><dd>{sources.length} 个</dd></div>
+      <div><dt>已启用</dt><dd>{sources.filter(source => source.enabled).length} 个</dd></div>
+      <div><dt>登录配置</dt><dd>{config?.clientSecretConfigured ? '已配置' : '未配置'}</dd></div>
+    </dl>
+    </section>}
+    {active.id === 'rooms' && <AdminRooms onError={report} />}
+    {active.id === 'settings' && <form onSubmit={saveConfig} className="account-section"><fieldset disabled={Boolean(busy) || !config}>
       <h2>站点与登录配置</h2>
       <label>站点地址<input required type="url" maxLength={512} value={config?.siteOrigin || ''} onChange={e => setConfig(config && { ...config, siteOrigin: e.target.value })} /></label>
       <div className="account-grid">
@@ -175,8 +203,8 @@ export default function AdminPage() {
       <label>OAuth 回调地址<output>{config?.siteOrigin.replace(/\/+$/, '')}/api/auth/moyu/callback</output></label>
       <label>当前管理员密码<input required type="password" autoComplete="current-password" maxLength={64} value={configPassword} onChange={e => setConfigPassword(e.target.value)} /></label>
       <div className="account-actions"><button><HiSave />{busy === 'config' ? '保存中...' : '保存配置'}</button></div>
-    </fieldset></form>
-    <form onSubmit={changeCredentials} className="account-section"><fieldset disabled={Boolean(busy)}>
+    </fieldset></form>}
+    {active.id === 'account' && <form onSubmit={changeCredentials} className="account-section"><fieldset disabled={Boolean(busy)}>
       <h2>管理员凭据</h2>
       <label>新账号<input required pattern="[A-Za-z0-9_.@\-]{2,32}" autoComplete="username" maxLength={32} value={newUsername} onChange={e => setNewUsername(e.target.value)} /></label>
       <div className="account-grid">
@@ -184,8 +212,8 @@ export default function AdminPage() {
         <label>当前密码<input required type="password" autoComplete="current-password" maxLength={64} value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} /></label>
       </div>
       <div className="account-actions"><button><HiSave />{busy === 'credentials' ? '更新中...' : '更新账号'}</button></div>
-    </fieldset></form>
-    <section className="account-section">
+    </fieldset></form>}
+    {active.id === 'sources' && <section className="account-section">
       <h2>视频地址管理</h2>
       <p className="account-help">旧视频地址会保留在列表中；停用后不会展示给用户，内置地址不能删除，只能停用。</p>
       <form onSubmit={saveSource}>
@@ -212,6 +240,8 @@ export default function AdminPage() {
           </div>
         </div>)}
       </div>
-    </section>
+    </section>}
+    </div>
+    </div>
   </div></main>;
 }

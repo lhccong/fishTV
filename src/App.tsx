@@ -17,6 +17,9 @@ import { Video } from './api/types';
 import TypeListPage from "./pages/TypeListPage.tsx";
 import AdminPage from './pages/AdminPage';
 import AccessGate from './context/AccessGate';
+import { RoomProvider } from './hooks/useRoomSocket';
+import RoomsPage from './pages/RoomsPage';
+import WatchRoomPage from './pages/WatchRoomPage';
 
 // 缓存键名
 const CACHE_KEYS = {
@@ -160,10 +163,11 @@ const App: React.FC = () => {
     <ThemeProvider>
       <Router>
         <AccessGate>
+        <RoomProvider>
       <HistoryProvider>
         <SearchHistoryProvider>
             <Routes>
-              <Route path="/" element={<HomePage />} />
+              <Route path="/" element={<RoomsPage />} />
               <Route path="/movies" element={<TypeListPage type="movies" />} />
               <Route path="/tv" element={<TypeListPage type="tv" />} />
               <Route path="/anime" element={<TypeListPage type="anime" />} />
@@ -174,9 +178,12 @@ const App: React.FC = () => {
               <Route path="/search" element={<SearchResultsPage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/admin" element={<AdminPage />} />
+              <Route path="/rooms" element={<RoomsPage />} />
+              <Route path="/rooms/:roomId" element={<WatchRoomPage />} />
             </Routes>
         </SearchHistoryProvider>
       </HistoryProvider>
+        </RoomProvider>
         </AccessGate>
       </Router>
     </ThemeProvider>

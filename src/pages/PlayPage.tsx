@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useHistory } from '../context/HistoryContext';
 import Layout from '../components/Layout';
 import VideoPlayer from '../components/VideoPlayer';
 import VideoPlayerSkeleton from '../components/VideoPlayerSkeleton';
+import CreateWatchRoom from '../components/CreateWatchRoom';
 import { getVideoDetail, searchVideo } from '../api/video';
 import { Video } from '../api/types';
 import { VIDEO_SOURCES } from '../api/config';
+import { useRoomSocket } from '../hooks/useRoomSocket';
+import { videoEpisodes } from '../lib/roomVideo';
 
 // In a real application, this would come from API or route params
 const sampleVideoData = {
@@ -84,6 +87,8 @@ const PlayPage = () => {
   const [currentEpisode, setCurrentEpisode] = useState(Number(episode || '1'));
   const [sourceStartIndex, setSourceStartIndex] = useState(0);
   const sourcesPerPage = 3; // 每页显示的数据源数量改为3个
+  const { room } = useRoomSocket();
+  const playerContainer = useRef<HTMLDivElement>(null);
 
   // 计算当前显示的数据源
   const visibleSources = Object.entries(VIDEO_SOURCES).slice(sourceStartIndex, sourceStartIndex + sourcesPerPage);
@@ -184,17 +189,6 @@ const PlayPage = () => {
     }
   };
 
-  const getPlayUrl = () => {
-    if (!video?.vod_play_url) return '';
-    
-    const episodes = video.vod_play_url.split('#');
-    const currentEpisodeData = episodes[currentEpisode - 1];
-    if (!currentEpisodeData) return '';
-    
-    const parts = currentEpisodeData.split('$');
-    return parts.length > 1 ? parts[1] : '';
-  };
-
   const handleEpisodeChange = (ep: number) => {
     setCurrentEpisode(ep);
     // 更新 URL 时保持当前的数据源
@@ -215,6 +209,10 @@ const PlayPage = () => {
       });
     }
   };
+
+  const episodes = video ? videoEpisodes(video) : [];
+  const totalEpisodes = episodes.length;
+  const currentVideoUrl = episodes[currentEpisode - 1]?.url || '';
 
   if (loading) {
     return (
@@ -242,15 +240,12 @@ const PlayPage = () => {
     );
   }
 
-  const totalEpisodes = video.vod_play_url ? video.vod_play_url.split('#').length : 0;
-  const currentVideoUrl = getPlayUrl();
-
   return (
     <Layout>
-      <div className="bg-[#f3f8f8] pt-4">
+      <div className="bg-[var(--app-bg)] pt-4">
         {/* Video title section */}
-        <div className="mb-4">
-          <div className="flex items-center">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-y-2">
             <h1 className="text-xl font-bold text-gray-800">
               <Link to={`/detail/${id}`} className="hover:text-primary">
                 {video.vod_name}
@@ -268,11 +263,15 @@ const PlayPage = () => {
               </span>
             </div>
           </div>
+          <CreateWatchRoom
+            key={`${video.vod_id}:${selectedSource}:${currentEpisode}`}
+            video={video} source={selectedSource} episode={currentEpisode} url={currentVideoUrl}
+            getPosition={() => playerContainer.current?.querySelector('video')?.currentTime || 0}
+          />
         </div>
-
         {/* Video player section */}
         <div className="flex flex-col lg:flex-row gap-4">
-          <div className="flex-1 bg-black rounded-lg overflow-hidden">
+          <div ref={playerContainer} className="min-w-0 flex-1 bg-black rounded-lg overflow-hidden">
             <VideoPlayer
               id={id || ''}
               title={video.vod_name}
@@ -344,12 +343,7 @@ const PlayPage = () => {
               <div className="grid grid-cols-3 gap-2 max-h-[400px] overflow-y-auto overflow-x-hidden">
                 {Array.from({ length: totalEpisodes }, (_, i) => i + 1).map((ep) => {
                   // 解析播放地址，获取集数名称
-                  const episodeNames = video.vod_play_url.split('#').map(ep => {
-                    const parts = ep.split('$');
-                    return parts[0] || '';
-                  });
-                  
-                  const episodeName = episodeNames[ep - 1] || `第${ep.toString().padStart(2, '0')}集`;
+                  const episodeName = episodes[ep - 1]?.name || `第${ep.toString().padStart(2, '0')}集`;
                   
                   return (
                     <div key={ep} className="relative group">
@@ -370,9 +364,11 @@ const PlayPage = () => {
                     </div>
                   );
                 })}
-              </div>
-            </div>
           </div>
+        </div>
+
+        {room && <Link className="mt-4 block text-red-600" to={`/rooms/${room.id}`}>返回观影房间</Link>}
+      </div>
         </div>
 
         {/* Related recommendations */}

@@ -20,13 +20,13 @@ interface ContentSectionProps {
 
 const ContentCardSkeleton = () => {
   return (
-    <div className="content-card relative bg-white rounded-md overflow-hidden shadow-sm">
+    <div className="content-card relative bg-[var(--app-surface)] rounded-md overflow-hidden shadow-sm">
       <div className="relative pb-[140%]">
-        <div className="absolute inset-0 w-full h-full bg-gray-200 animate-pulse" />
+        <div className="absolute inset-0 w-full h-full skeleton-fill animate-pulse" />
       </div>
       <div className="p-2">
-        <div className="h-4 bg-gray-200 rounded animate-pulse mb-1" />
-        <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4" />
+        <div className="h-4 skeleton-fill rounded animate-pulse mb-1" />
+        <div className="h-3 skeleton-fill rounded animate-pulse w-3/4" />
       </div>
     </div>
   );

@@ -13,7 +13,7 @@ const stateKey = (state: string) => `fishTV:oauth:state:${digest(state)}`;
 const sessionKey = (sid: string) => `fishTV:user:session:${digest(sid)}`;
 const validToken = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
 type Profile = { id: string; username: string; avatarUrl?: string };
-type UserSession = { profile: Profile; version: string; profileVersion?: string };
+export type UserSession = { profile: Profile; version: string; profileVersion?: string };
 
 function returnPath(value: unknown) {
   if (typeof value !== 'string' || value.length > 2048 || !value.startsWith('/') ||

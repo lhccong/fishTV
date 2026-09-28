@@ -83,6 +83,8 @@ interface VideoPlayerProps {
     episode: number;
     totalEpisodes: number;
     videoUrl: string;
+    remotePlayback?: { playing: boolean; positionSeconds: number; revision: number } | null;
+    onPlaybackChange?: (state: { playing: boolean; positionSeconds: number }) => void;
 }
 
 const VideoPlayer = ({
@@ -92,11 +94,19 @@ const VideoPlayer = ({
                          episode,
                          totalEpisodes,
                          videoUrl,
+                         remotePlayback = null,
+                         onPlaybackChange,
                      }: VideoPlayerProps) => {
     const [showPublicNotice, setShowPublicNotice] = useState(true);
     const playerRef = useRef<HTMLDivElement>(null);
     const dpRef = useRef<DPlayer | null>(null);
     const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const applyingRemoteRef = useRef(false);
+    const playbackCallbackRef = useRef(onPlaybackChange);
+
+    useEffect(() => {
+        playbackCallbackRef.current = onPlaybackChange;
+    }, [onPlaybackChange]);
 
     // 获取存储的播放进度
     const getStoredProgress = () => {
@@ -160,6 +170,17 @@ const VideoPlayer = ({
                                 toggleFullscreen();
                             });
 
+                            const reportPlayback = () => {
+                                if (applyingRemoteRef.current) return;
+                                playbackCallbackRef.current?.({
+                                    playing: !video.paused,
+                                    positionSeconds: video.currentTime || 0,
+                                });
+                            };
+                            video.addEventListener('play', reportPlayback);
+                            video.addEventListener('pause', reportPlayback);
+                            video.addEventListener('seeked', reportPlayback);
+
                             // 定期保存播放进度
                             progressTimerRef.current = setInterval(() => {
                                 if (!video.paused) {
@@ -201,6 +222,20 @@ const VideoPlayer = ({
             document.removeEventListener('keydown', handleKeyPress);
         };
     }, [videoUrl]);
+
+    useEffect(() => {
+        const video = dpRef.current?.video;
+        if (!video || !remotePlayback || remotePlayback.revision < 1) return;
+        const drift = Math.abs(video.currentTime - remotePlayback.positionSeconds);
+        applyingRemoteRef.current = true;
+        if (drift > 1.5) video.currentTime = remotePlayback.positionSeconds;
+        if (remotePlayback.playing && video.paused) {
+            void video.play().catch(() => undefined);
+        } else if (!remotePlayback.playing && !video.paused) {
+            video.pause();
+        }
+        window.setTimeout(() => { applyingRemoteRef.current = false; }, 150);
+    }, [remotePlayback?.playing, remotePlayback?.positionSeconds, remotePlayback?.revision]);
 
     // Handle fullscreen toggle
     const toggleFullscreen = () => {

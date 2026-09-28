@@ -7,6 +7,8 @@ import { initRedis, isRedisConnected, mustRedis } from './redis.js';
 import { fail, limit, requireSameOrigin } from './security.js';
 import { acquireConfigLease, getConfig, persistConfig, setupRequired, validateConfig } from './config.js';
 import { listVideoSources, removeVideoSource, upsertVideoSource } from './videoSources.js';
+import { adminRoomList, adminRemoveRoom, adminSetRoom, adminSetRoomPolicy } from './socket.js';
+import { RoomInputError } from './roomPolicy.js';
 
 export async function mountAdminApi(app: Express) {
   if (!setupRequired() && await initRedis()) await initAdminCredentials();
@@ -44,6 +46,33 @@ export async function mountAdminApi(app: Express) {
       username: await getAdminUsername(), redis: { connected: true },
       server: { node: process.version, uptimeSeconds: Math.floor(process.uptime()) },
     });
+  });
+  app.get('/api/admin/rooms', requireAdmin, limit('admin_rooms_read', 60), async (_req, res) => {
+    res.json(await adminRoomList());
+  });
+  app.put('/api/admin/room-policy', requireSameOrigin, requireAdmin, limit('admin_rooms_write', 20), async (req, res) => {
+    try {
+      res.json({ policy: await adminSetRoomPolicy(req.body || {}) });
+    } catch (error) {
+      if (error instanceof RoomInputError) return fail(res, error.status, error.code, error.message);
+      throw error;
+    }
+  });
+  app.put('/api/admin/rooms/:id', requireSameOrigin, requireAdmin, limit('admin_rooms_write', 20), async (req, res) => {
+    try {
+      res.json({ room: await adminSetRoom(String(req.params.id), req.body || {}) });
+    } catch (error) {
+      if (error instanceof RoomInputError) return fail(res, error.status, error.code, error.message);
+      throw error;
+    }
+  });
+  app.delete('/api/admin/rooms/:id', requireSameOrigin, requireAdmin, limit('admin_rooms_write', 20), async (req, res) => {
+    try {
+      res.json(await adminRemoveRoom(String(req.params.id)));
+    } catch (error) {
+      if (error instanceof RoomInputError) return fail(res, error.status, error.code, error.message);
+      throw error;
+    }
   });
   app.put('/api/admin/credentials', requireSameOrigin, requireAdmin, limit('admin_credentials', 5), async (req, res) => {
     const result = await changeAdminCredentials(req.body || {});

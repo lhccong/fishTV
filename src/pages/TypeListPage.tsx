@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import ContentCard from '../components/ContentCard';
 import SkeletonCard from '../components/SkeletonCard';
@@ -66,12 +65,12 @@ interface TypeListPageProps {
   type: string;
 }
 
-const TypeListPage: React.FC<TypeListPageProps> = ({ type }) => {
-  const navigate = useNavigate();
+const TypeListContent: React.FC<TypeListPageProps> = ({ type }) => {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [selectedMovieType, setSelectedMovieType] = useState(6); // 默认选中剧情片
   const [selectedTvType, setSelectedTvType] = useState(13); // 默认选中国产剧
@@ -80,21 +79,26 @@ const TypeListPage: React.FC<TypeListPageProps> = ({ type }) => {
   const [selectedShortType, setSelectedShortType] = useState(36); // 默认选中古装短剧
   const observer = useRef<IntersectionObserver | null>(null);
   const lastVideoElementRef = useCallback((node: HTMLDivElement | null) => {
-    if (loading) return;
     if (observer.current) observer.current.disconnect();
+    if (loading || error || !node) return;
     observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore) {
+      if (entries[0]?.isIntersecting && hasMore) {
+        observer.current?.disconnect();
         setPage(prevPage => prevPage + 1);
       }
     });
     if (node) observer.current.observe(node);
-  }, [loading, hasMore]);
+  }, [loading, hasMore, error]);
+
+  useEffect(() => () => observer.current?.disconnect(), []);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchVideos = async () => {
       if (!type || !TYPE_MAP[type]) return;
       
       setLoading(true);
+      setError('');
       try {
         const response = await getVideoList({
           ac: 'videolist',
@@ -108,18 +112,25 @@ const TypeListPage: React.FC<TypeListPageProps> = ({ type }) => {
           pagesize: 24,
         });
         
-        setVideos(prevVideos => [...prevVideos, ...response.list]);
-        setTotalPages(response.pagecount);
+        if (cancelled) return;
+        setVideos(prevVideos => {
+          if (page === 1) return response.list;
+          const ids = new Set(prevVideos.map(video => video.vod_id));
+          return [...prevVideos, ...response.list.filter(video => !ids.has(video.vod_id))];
+        });
         setHasMore(page < response.pagecount);
       } catch (error) {
+        if (cancelled) return;
+        setError('影片加载失败，请重试');
         console.error('获取视频列表失败:', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchVideos();
-  }, [type, page, selectedMovieType, selectedTvType, selectedAnimeType, selectedVarietyType, selectedShortType]);
+    return () => { cancelled = true; };
+  }, [type, page, selectedMovieType, selectedTvType, selectedAnimeType, selectedVarietyType, selectedShortType, attempt]);
 
   if (!type || !TYPE_MAP[type]) {
     return (
@@ -145,6 +156,9 @@ const TypeListPage: React.FC<TypeListPageProps> = ({ type }) => {
                 <button
                   key={subType.id}
                   onClick={() => {
+                    if (selectedMovieType === subType.id) return;
+                    setLoading(true);
+                    setError('');
                     setSelectedMovieType(subType.id);
                     setPage(1);
                     setVideos([]);
@@ -169,6 +183,9 @@ const TypeListPage: React.FC<TypeListPageProps> = ({ type }) => {
                 <button
                   key={subType.id}
                   onClick={() => {
+                    if (selectedTvType === subType.id) return;
+                    setLoading(true);
+                    setError('');
                     setSelectedTvType(subType.id);
                     setPage(1);
                     setVideos([]);
@@ -193,6 +210,9 @@ const TypeListPage: React.FC<TypeListPageProps> = ({ type }) => {
                 <button
                   key={subType.id}
                   onClick={() => {
+                    if (selectedAnimeType === subType.id) return;
+                    setLoading(true);
+                    setError('');
                     setSelectedAnimeType(subType.id);
                     setPage(1);
                     setVideos([]);
@@ -217,6 +237,9 @@ const TypeListPage: React.FC<TypeListPageProps> = ({ type }) => {
                 <button
                   key={subType.id}
                   onClick={() => {
+                    if (selectedVarietyType === subType.id) return;
+                    setLoading(true);
+                    setError('');
                     setSelectedVarietyType(subType.id);
                     setPage(1);
                     setVideos([]);
@@ -241,6 +264,9 @@ const TypeListPage: React.FC<TypeListPageProps> = ({ type }) => {
                 <button
                   key={subType.id}
                   onClick={() => {
+                    if (selectedShortType === subType.id) return;
+                    setLoading(true);
+                    setError('');
                     setSelectedShortType(subType.id);
                     setPage(1);
                     setVideos([]);
@@ -280,14 +306,18 @@ const TypeListPage: React.FC<TypeListPageProps> = ({ type }) => {
                 />
               </div>
             ))
-          ) : (
+          ) : !error ? (
             // 没有数据时显示提示
             <div className="col-span-full text-center py-12">
               <p className="text-gray-500">暂无数据</p>
             </div>
-          )}
+          ) : null}
         </div>
         
+        {error && <div className="py-8 text-center" role="alert">
+          <p className="app-muted">{error}</p>
+          <button className="mt-3 rounded border border-primary px-4 py-2 text-primary" onClick={() => setAttempt(value => value + 1)}>重试</button>
+        </div>}
         {loading && videos.length > 0 && (
           <div className="flex justify-center items-center py-8">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
@@ -298,4 +328,6 @@ const TypeListPage: React.FC<TypeListPageProps> = ({ type }) => {
   );
 };
 
-export default TypeListPage;
+export default function TypeListPage({ type }: TypeListPageProps) {
+  return <TypeListContent key={type} type={type} />;
+}

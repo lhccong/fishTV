@@ -8,19 +8,31 @@
 }
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
-  background-color: #f3f8f8;
-  color: #352e2a;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--app-bg);
+  color: var(--app-text);
+  -webkit-font-smoothing: antialiased;
 }
 
 :root {
+  --app-bg: #09090b;
+  --app-surface: #111114;
+  --app-surface-raised: #18181d;
+  --app-surface-hover: #202026;
+  --app-border: rgba(255, 255, 255, .08);
+  --app-border-strong: rgba(255, 255, 255, .14);
+  --app-text: #f4f4f5;
+  --app-muted: #a1a1aa;
+  --app-subtle: #71717a;
+  --app-accent: #ff4d55;
+  --app-accent-soft: #ff8a90;
   --background: 0 0% 100%;
   --foreground: 240 10% 3.9%;
   --card: 0 0% 100%;
   --card-foreground: 240 10% 3.9%;
   --popover: 0 0% 100%;
   --popover-foreground: 240 10% 3.9%;
-  --primary: 0 68% 49%; /* FreeOK red color */
+  --primary: 0 100% 65%;
   --primary-foreground: 0 0% 98%;
   --secondary: 240 4.8% 95.9%;
   --secondary-foreground: 240 5.9% 10%;
@@ -34,6 +46,20 @@ body {
   --input: 240 5.9% 90%;
   --ring: 240 5.9% 10%;
   --radius: 0.5rem;
+}
+
+:root:not(.dark) {
+  --app-bg: #f7f8fa;
+  --app-surface: #ffffff;
+  --app-surface-raised: #ffffff;
+  --app-surface-hover: #f1f3f6;
+  --app-border: rgba(15, 23, 42, .1);
+  --app-border-strong: rgba(15, 23, 42, .18);
+  --app-text: #18202c;
+  --app-muted: #4b5563;
+  --app-subtle: #6b7280;
+  --app-accent: #e54851;
+  --app-accent-soft: #f2767d;
 }
 
 .dark {
@@ -58,9 +84,9 @@ body {
   --ring: 240 4.9% 83.9%;
 }
 
-/* FreeOK custom styles */
+/* Shared visual language */
 .freeok-logo {
-  background: linear-gradient(45deg, #c63232, #e64a4a);
+  background: linear-gradient(110deg, #ff4d55, #e879f9);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -68,22 +94,67 @@ body {
 }
 
 .sidebar-nav {
-  background-color: #fff;
-  border-right: 1px solid #f0f0f0;
+  background: color-mix(in srgb, var(--app-surface) 92%, transparent);
+  border-right: 1px solid var(--app-border);
+  backdrop-filter: blur(20px);
+}
+
+.app-shell { background: var(--app-bg); }
+.skeleton-fill { background-color:var(--app-surface-hover); }
+.play-room-entry { max-width:100%; margin:0 0 16px auto; text-align:right; }
+.play-room-entry button { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:10px 16px; border-radius:6px; background:#ed3d50; color:#fff; font-size:14px; }
+.play-room-entry button:hover:not(:disabled) { background:#d82c40; }
+.play-room-entry button:disabled { opacity:.55; cursor:not-allowed; }
+.play-room-entry button:focus-visible { outline:2px solid var(--app-accent); outline-offset:3px; }
+.play-room-entry p { max-width:380px; margin:8px 0 0 auto; color:var(--app-muted); font-size:12px; overflow-wrap:anywhere; }
+.play-room-entry [role=alert] { color:var(--app-accent); }
+.header-grid { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"navigation account" "search search"; align-items:center; gap:12px 20px; width:100%; max-width:1500px; margin:0 auto; padding:14px 24px 18px; }
+.header-grid .top-navigation { grid-area:navigation; width:100%; padding:0; margin:0; gap:24px; }
+.header-user-tools { grid-area:account; display:flex; align-items:center; justify-content:flex-end; gap:8px; min-width:0; }
+.header-search { grid-area:search; justify-self:center; width:min(100%,700px); min-width:0; }
+.app-header .header-search-input { width:100%; height:44px; padding:10px 16px 10px 42px; border:1px solid var(--app-border-strong); border-radius:22px; background:var(--app-surface); color:var(--app-text); outline:none; }
+.app-header .header-search-input::placeholder { color:var(--app-subtle); }
+.app-header .header-search-input:focus { border-color:var(--app-accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--app-accent) 15%,transparent); }
+@media(max-width:1200px) {
+  .header-grid .top-navigation { flex-wrap:wrap; gap:10px; }
+  .header-grid .top-navigation nav { flex-basis:100%; }
+}
+@media(max-width:800px) {
+  .header-grid { grid-template-columns:minmax(0,1fr); grid-template-areas:"account" "navigation" "search"; padding:12px; gap:14px; }
+  .header-user-tools { flex-wrap:wrap; gap:4px; }
+  .header-history { position:fixed; top:auto; right:12px; max-width:calc(100vw - 24px); }
+}
+.top-navigation { display:flex; align-items:center; gap:40px; max-width:1500px; margin:0 auto; padding:14px 24px; }
+.top-brand { flex-shrink:0; }
+.top-navigation nav { display:flex; flex-wrap:wrap; gap:6px; min-width:0; }
+.top-navigation nav a { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:10px 16px; border-radius:6px; color:var(--app-muted); font-size:14px; white-space:nowrap; }
+.top-navigation nav svg { width:18px; height:18px; }
+.top-navigation nav a:hover { background:var(--app-surface-hover); color:var(--app-text); }
+.top-navigation nav a[aria-current=page] { background:var(--app-surface-hover); color:var(--app-accent); }
+.top-navigation a:focus-visible { outline:2px solid var(--app-accent); outline-offset:2px; }
+@media(max-width:640px) {
+  .top-navigation { flex-direction:column; align-items:stretch; gap:12px; padding:12px; }
+  .top-navigation nav { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:2px; }
+  .top-navigation nav a { padding:8px 0; font-size:12px; }
+  .top-navigation nav svg { display:none; }
+}
+.app-header {
+  background: color-mix(in srgb, var(--app-bg) 78%, transparent) !important;
+  border-color: var(--app-border) !important;
 }
 
 .content-card {
-  transition: all 0.3s ease;
+  transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
 }
 
 .content-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, .24);
 }
 
 .category-heading {
   font-weight: bold;
-  color: #352e2a;
+  color: var(--app-text);
   position: relative;
 }
 
@@ -94,11 +165,11 @@ body {
   bottom: -5px;
   width: 30px;
   height: 2px;
-  background-color: #c63232;
+  background-color: var(--app-accent);
 }
 
 .rating-badge {
-  background-color: #4eaa72;
+  background-color: #32d583;
   color: white;
   font-size: 12px;
   padding: 2px 4px;
@@ -109,25 +180,34 @@ body {
   color: #c63232;
 }
 
-/* 暗黑模式样式 */
-html.dark {
-  filter: invert(1) hue-rotate(180deg);
-}
+/* Legacy Tailwind pages use utility colors; remap them to the shared theme. */
+.dark .bg-white:not(.no-invert),
+.dark .bg-gray-50,
+.dark .bg-gray-100 { background-color: var(--app-surface) !important; }
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-gray-300 { border-color: var(--app-border) !important; }
+.dark .text-gray-400 { color: var(--app-subtle) !important; }
+.dark .text-gray-500,
+.dark .text-gray-600,
+.dark .text-gray-700,
+.dark .text-gray-800,
+.dark .text-gray-900 { color: var(--app-muted) !important; }
+.dark input,
+.dark select,
+.dark textarea { background-color: var(--app-surface-raised); color: var(--app-text); border-color: var(--app-border); }
 
-/* 不需要反转的元素 */
-html.dark img,
-html.dark video,
-html.dark iframe,
-html.dark .no-invert {
-  filter: invert(1) hue-rotate(180deg);
-}
+:root:not(.dark) .dark-only { display: none; }
+.app-surface { background: var(--app-surface); border: 1px solid var(--app-border); }
+.app-muted { color: var(--app-muted); }
+.app-subtle { color: var(--app-subtle); }
 
 /* 暗黑模式切换按钮 */
 .theme-toggle {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background-color: var(--primary);
+  background-color: var(--app-surface-raised);
   color: white;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -135,8 +215,8 @@ html.dark .no-invert {
   align-items: center;
   justify-content: center;
   font-size: 20px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  border: none;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .16);
+  border: 1px solid var(--app-border);
   outline: none;
 }
 
@@ -168,7 +248,7 @@ html.dark .no-invert {
 }
 
 .history-button:hover {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: var(--app-surface-hover);
 }
 
 .history-button .icon {
@@ -200,7 +280,7 @@ html.dark .no-invert {
 }
 
 .home-button:hover {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: var(--app-surface-hover);
 }
 
 .home-button .icon {
@@ -208,6 +288,9 @@ html.dark .no-invert {
   height: 24px;
   color: var(--foreground);
 }
+
+::selection { background: rgba(255, 77, 85, .3); }
+button, a, input, select { -webkit-tap-highlight-color: transparent; }
 
 /* 在暗黑模式下的样式 */
 .dark .home-button:hover {
