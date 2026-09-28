@@ -8,6 +8,7 @@ import { getVideoSource } from './videoSources.js';
 import { cookie, digest } from './security.js';
 import { getSocketIp } from './clientNetwork.js';
 import { getDeviceIdFromCookie } from './deviceIdentity.js';
+import { isPlaybackRate, normalizePlaybackRate } from '../shared/roomPlayback.js';
 import { isSiteBanned, type SiteBan } from './siteBan.js';
 import { expiration, idleMinutes, roomPasswordHash, roomRetention, verifyRoomPassword,
   ROOM_POLICY_KEY, RoomInputError, type RoomRetention, type RoomPolicy } from './roomPolicy.js';
@@ -43,6 +44,7 @@ type PlaybackState = {
   videoUrl: string;
   playing: boolean;
   positionSeconds: number;
+  playbackRate?: number;
   updatedAt: number;
   revision: number;
   title?: string;
@@ -70,7 +72,7 @@ type RoomState = RoomRetention & {
   playMode?: 'sequential' | 'single' | 'random';
 };
 
-type AuthenticatedSocket = Socket & { data: { session: UserSession; roomId?: string } };
+type AuthenticatedSocket = Socket & { data: { session: UserSession; roomId?: string; playbackRateSupported?: boolean } };
 
 function normalizeRoomId(value: unknown) {
   const roomId = String(value || '').trim().toUpperCase();
@@ -142,6 +144,7 @@ async function loadRoom(roomId: string) {
   }
   parsed.playMode = parsed.playMode === 'single' || parsed.playMode === 'random'
     ? parsed.playMode : 'sequential';
+  if (parsed.playback) parsed.playback.playbackRate = normalizePlaybackRate(parsed.playback.playbackRate);
   parsed.adminIds = Array.isArray(parsed.adminIds)
     ? [...new Set(parsed.adminIds.filter(id => typeof id === 'string' && id !== parsed.ownerId))]
     : [];
@@ -468,6 +471,10 @@ export function mountSocketServer(httpServer: HttpServer) {
         if (!socket.connected) {
           return;
         }
+        if (normalizePlaybackRate(room.playback?.playbackRate) !== 1 && payload?.playbackRateSupported !== true) {
+          ackError(callback, '房间正在倍速播放，请刷新页面后重新加入', 'CLIENT_UPDATE_REQUIRED');
+          return;
+        }
         const previousRoomId = socketRoom(socket);
         if (previousRoomId && previousRoomId !== roomId) {
           await socket.leave(previousRoomId);
@@ -488,6 +495,7 @@ export function mountSocketServer(httpServer: HttpServer) {
         await saveRoom(room);
         await socket.join(roomId);
         socket.data.roomId = roomId;
+        socket.data.playbackRateSupported = payload?.playbackRateSupported === true;
         callback?.({ success: true, room: publicRoom(room), messages: room.chat.slice(-50) });
         broadcastRoom(io, room);
       } catch {
@@ -671,6 +679,7 @@ export function mountSocketServer(httpServer: HttpServer) {
         videoUrl,
         playing: Boolean(payload?.playing),
         positionSeconds: Math.max(0, Math.min(Number(payload?.positionSeconds) || 0, 24 * 60 * 60)),
+        playbackRate: normalizePlaybackRate(room.playback?.playbackRate),
         updatedAt: Date.now(),
         revision: (room.playback?.revision || 0) + 1,
         title: normalizeText(payload?.title, 160),
@@ -711,6 +720,46 @@ export function mountSocketServer(httpServer: HttpServer) {
       io.to(roomId).emit('playback_state', room.playback);
     });
 
+    handle('set_playback_rate', async (payload, callback) => {
+      const roomId = requireJoined(socket, callback);
+      if (!roomId) return;
+      const room = await loadRoom(roomId);
+      if (!room || room.ownerId !== session.profile.id || !room.playback) {
+        console.info('[rooms] playback_rate_denied');
+        ackError(callback, '只有房主可以调整倍速', 'ROOM_FORBIDDEN');
+        return;
+      }
+      if (!isPlaybackRate(payload?.playbackRate) || !Number.isFinite(payload?.positionSeconds) ||
+          payload.positionSeconds < 0 || payload.positionSeconds > 24 * 60 * 60 ||
+          !Number.isInteger(payload?.revision)) {
+        console.info('[rooms] playback_rate_invalid');
+        ackError(callback, '播放倍速或进度无效', 'INVALID_PLAYBACK_RATE');
+        return;
+      }
+      if (payload.revision !== room.playback.revision) {
+        console.info('[rooms] playback_rate_stale');
+        callback({ success: false, code: 'STALE_PLAYBACK', error: '播放状态已更新，请重新选择倍速', playback: room.playback });
+        return;
+      }
+      if (payload.playbackRate !== 1 &&
+          (await io.in(roomId).fetchSockets()).some(member => member.data.playbackRateSupported !== true)) {
+        console.info('[rooms] playback_rate_client_outdated');
+        ackError(callback, '房间中有旧版页面，请所有成员刷新后再调整倍速', 'CLIENT_UPDATE_REQUIRED');
+        return;
+      }
+      room.playback = {
+        ...room.playback,
+        playbackRate: payload.playbackRate,
+        positionSeconds: payload.positionSeconds,
+        updatedAt: Date.now(),
+        revision: room.playback.revision + 1,
+      };
+      await saveRoom(room);
+      callback({ success: true, playback: room.playback });
+      io.to(roomId).emit('playback_state', room.playback);
+      console.info('[rooms] playback_rate_updated');
+    });
+
     handle('advance_playback', async (payload, callback) => {
       const roomId = requireJoined(socket, callback);
       if (!roomId) return;
@@ -744,6 +793,7 @@ export function mountSocketServer(httpServer: HttpServer) {
         videoUrl,
         playing: Boolean(payload.playing),
         positionSeconds: Math.max(0, Math.min(Number(payload.positionSeconds) || 0, 24 * 60 * 60)),
+        playbackRate: normalizePlaybackRate(room.playback.playbackRate),
         updatedAt: Date.now(),
         revision: room.playback.revision + 1,
         title: normalizeText(payload.title, 160),

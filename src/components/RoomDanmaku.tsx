@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { RoomChatMessage } from '../hooks/useRoomSocket';
+import { clipChatText } from '../lib/qqFace';
+import ChatMessageText from './ChatMessageText';
 
 const DURATION = 8000;
 type Bullet = { message: RoomChatMessage; lane: number; expires: number };
@@ -57,10 +59,10 @@ export default function RoomDanmaku({ events, enabled, userId }: {
   return <div ref={container} className="watch-danmaku" aria-hidden="true"
     style={{ '--danmaku-travel': `${size.width}px`, '--danmaku-duration': `${DURATION}ms` } as CSSProperties}>
     {bullets.map(({ message, lane }) => {
-      const text = Array.from(message.text.replace(/\s+/g, ' '));
+      const text = clipChatText(message.text.replace(/\s+/g, ' '), 100);
       return <span key={message.id} className={`watch-bullet ${message.userId === userId ? 'watch-bullet-self' : ''}`}
         style={{ top: `${lane * 38}px` }}>
-        {Array.from(message.username).slice(0, 16).join('')}：{text.slice(0, 100).join('')}{text.length > 100 ? '…' : ''}
+        {Array.from(message.username).slice(0, 16).join('')}：<ChatMessageText text={text} />
       </span>;
     })}
   </div>;

@@ -11,6 +11,8 @@ import RoomVideoPlayer from '../components/RoomVideoPlayer';
 import RoomInvite from '../components/RoomInvite';
 import RoomSettings from '../components/RoomSettings';
 import RoomMembers from '../components/RoomMembers';
+import RoomChatComposer from '../components/RoomChatComposer';
+import ChatMessageText from '../components/ChatMessageText';
 import '../watch-room.css';
 
 const categories = [{ id: 6, name: '电影', icon: HiFilm }, { id: 13, name: '电视剧', icon: HiDesktopComputer }, { id: 29, name: '动漫', icon: HiSparkles }, { id: 25, name: '综艺', icon: HiMicrophone }, { id: 36, name: '短剧', icon: HiVideoCamera }];
@@ -19,7 +21,7 @@ export default function WatchRoomPage() {
   const { roomId = '' } = useParams();
   const navigate = useNavigate();
   const user = useCurrentUser();
-  const { room, playback, messages, liveMessages, connected, joinFailure, error: socketError, joinRoom, leaveRoom, dissolveRoom, setRoomPlayback, advanceRoomPlayback, setRoomPlayMode, setPlaybackClock, sendChat } = useRoomSocket();
+  const { room, playback, messages, liveMessages, connected, joinFailure, error: socketError, joinRoom, leaveRoom, dissolveRoom, setRoomPlayback, advanceRoomPlayback, setRoomPlayMode, setPlaybackClock, setPlaybackRate, sendChat } = useRoomSocket();
   const joined = room?.id === roomId.toUpperCase();
   const owner = joined && (room.ownerId === user?.id || Boolean(user?.id && room.adminIds?.includes(user.id)));
   const [activePanel, setActivePanel] = useState<'invite' | 'settings' | 'members' | null>(null);
@@ -54,8 +56,6 @@ export default function WatchRoomPage() {
   const [mediaAttempt, setMediaAttempt] = useState(0);
   const [playModeSaving, setPlayModeSaving] = useState(false);
   const autoAdvance = useRef(false);
-  const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
   const chatScroll = useRef<HTMLDivElement>(null);
   const followChat = useRef(true);
   const mediaKey = playback ? `${playback.sourceId}:${playback.videoId}:${playback.episode}` : '';
@@ -324,6 +324,8 @@ export default function WatchRoomPage() {
           </div>}
           {playback ? <>
             {media?.key === mediaKey ? <RoomVideoPlayer key={mediaKey} url={media.url} playback={playback} owner={owner} connected={connected}
+              canSetPlaybackRate={room.ownerId === user?.id} onPlaybackRateChange={setPlaybackRate}
+              playMode={playMode} onPlayModeChange={setRoomPlayMode}
               messages={messages} liveMessages={liveMessages} userId={user?.id} sendChat={sendChat}
               onEnded={() => void playNextEpisode()}
               onClock={async (position, playing, revision) => {
@@ -366,16 +368,13 @@ export default function WatchRoomPage() {
               {message.avatarUrl ? <img src={message.avatarUrl} alt="" referrerPolicy="no-referrer" /> : <HiUserCircle />}
               <div className="watch-message-content">
                 <header><strong>{message.username}</strong></header>
-                <p>{message.text}</p>
+                <p><ChatMessageText text={message.text} /></p>
                 <time dateTime={new Date(message.createdAt).toISOString()}>{new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>
               </div>
             </article>)}
           </div>
-          <form className="watch-chat-form" onSubmit={async event => {
-            event.preventDefault(); if (!text.trim() || sending) return;
-            setSending(true); const result = await sendChat(text); setSending(false);
-            if (result.success) setText(''); else setError(result.error || '消息发送失败');
-          }}><input aria-label="聊天内容" maxLength={500} value={text} onChange={event => setText(event.target.value)} placeholder="聊聊这部影片..." /><button className="watch-primary" disabled={!connected || sending || !text.trim()} type="submit">发送</button></form>
+          <RoomChatComposer connected={connected} sendChat={sendChat} label="聊天内容"
+            placeholder="聊聊这部影片..." onSent={() => { followChat.current = true; }} />
         </aside>
       </div>}
   </main>;

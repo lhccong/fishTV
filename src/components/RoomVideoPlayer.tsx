@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
+import DPlayer from 'dplayer';
 import Hls from 'hls.js';
 import { HiPlay } from 'react-icons/hi';
-import type { RoomPlayback, RoomChatMessage } from '../hooks/useRoomSocket';
+import type { RoomPlayback, RoomChatMessage, RoomSummary } from '../hooks/useRoomSocket';
 import RoomPlayerChat from './RoomPlayerChat';
+import { normalizePlaybackRate } from '../../shared/roomPlayback';
 
 type Props = {
   url: string;
   playback: RoomPlayback;
   owner: boolean;
   connected: boolean;
+  playMode: NonNullable<RoomSummary['playMode']>;
+  onPlayModeChange: (mode: NonNullable<RoomSummary['playMode']>) => Promise<{ success: boolean; error?: string }>;
+  canSetPlaybackRate: boolean;
+  onPlaybackRateChange: (rate: number, position: number, revision: number) => Promise<{ success: boolean; error?: string }>;
   onClock: (position: number, playing: boolean, revision: number) => Promise<void>;
   messages: RoomChatMessage[];
   liveMessages: RoomChatMessage[];
@@ -17,8 +23,10 @@ type Props = {
   onEnded?: () => void;
 };
 
-export default function RoomVideoPlayer({ url, playback, owner, connected, onClock, messages, liveMessages, userId, sendChat, onEnded }: Props) {
-  const element = useRef<HTMLVideoElement>(null);
+export default function RoomVideoPlayer({ url, playback, owner, connected, playMode, onPlayModeChange, canSetPlaybackRate, onPlaybackRateChange, onClock, messages, liveMessages, userId, sendChat, onEnded }: Props) {
+  const element = useRef<HTMLVideoElement | null>(null);
+  const playerHost = useRef<HTMLDivElement>(null);
+  const [controls, setControls] = useState<HTMLElement | null>(null);
   const container = useRef<HTMLDivElement>(null);
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
   const [theater, setTheater] = useState(false);
@@ -28,6 +36,40 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
   const [error, setError] = useState('');
   const [blocked, setBlocked] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [rateBusy, setRateBusy] = useState(false);
+  const [rateError, setRateError] = useState('');
+  const ratePending = useRef(false);
+  const syncPlayback = useRef<(() => void) | null>(null);
+  const [playModeBusy, setPlayModeBusy] = useState(false);
+  const [playModeError, setPlayModeError] = useState('');
+  const playModePending = useRef(false);
+
+  const changePlayMode = async (mode: NonNullable<RoomSummary['playMode']>) => {
+    if (!owner || !connected || playModePending.current || mode === playMode) return;
+    playModePending.current = true;
+    setPlayModeBusy(true); setPlayModeError(''); setRateError('');
+    try {
+      const result = await onPlayModeChange(mode);
+      if (!result.success) setPlayModeError(result.error || '播放设置保存失败，请重试');
+    } catch { setPlayModeError('播放设置保存失败，请重试'); }
+    finally { playModePending.current = false; setPlayModeBusy(false); }
+  };
+
+  const changePlaybackRate = async (rate: number) => {
+    const video = element.current;
+    if (!canSetPlaybackRate || !connected || ratePending.current || !video || video.readyState < 1) return;
+    ratePending.current = true;
+    setRateBusy(true); setRateError(''); setPlayModeError('');
+    try {
+      const result = await onPlaybackRateChange(rate, video.currentTime, live.current.playback.revision);
+      if (!result.success) setRateError(result.error || '倍速调整失败，请重试');
+    } catch { setRateError('倍速调整失败，请重试'); }
+    finally { ratePending.current = false; setRateBusy(false); }
+  };
+
+  useEffect(() => {
+    syncPlayback.current?.();
+  }, [playback.revision, playback.playbackRate, connected, rateBusy]);
 
   useEffect(() => {
     const changed = () => setNativeFullscreen(document.fullscreenElement === container.current);
@@ -55,7 +97,26 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
   };
 
   useEffect(() => {
-    const video = element.current!;
+    const host = playerHost.current!;
+    const player = new DPlayer({
+      container: host,
+      lang: 'zh-cn',
+      autoplay: false,
+      theme: '#ec4c62',
+      hotkey: false,
+      mutex: false,
+      preload: 'auto',
+      playbackSpeed: [1],
+      // Attach the source below, after room synchronization listeners are ready.
+      video: { url: '', type: 'normal' },
+    });
+    const video = player.video;
+    element.current = video;
+    video.setAttribute('aria-label', '共同播放视频');
+    video.playsInline = true;
+    const tools = document.createElement('div');
+    host.querySelector('.dplayer-icons-right')!.appendChild(tools);
+    setControls(tools);
     let hls: Hls | undefined;
     let disposed = false;
     let applyingUntil = 0;
@@ -71,12 +132,14 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
     };
     const sync = () => {
       const state = live.current.playback;
-      if (disposed || !live.current.connected || video.readyState < 1 || sending) return;
+      if (disposed || !live.current.connected || video.readyState < 1 || sending || ratePending.current) return;
+      const rate = normalizePlaybackRate(state.playbackRate);
+      if (video.playbackRate !== rate) video.playbackRate = rate;
       if (video.ended) {
         finish();
         return;
       }
-      const target = Math.max(0, state.positionSeconds + (state.playing ? Math.max(0, Date.now() - state.updatedAt) / 1000 : 0));
+      const target = Math.max(0, state.positionSeconds + (state.playing ? Math.max(0, Date.now() - state.updatedAt) / 1000 * rate : 0));
       const position = Number.isFinite(video.duration) ? Math.min(target, Math.max(0, video.duration - 0.05)) : target;
       const changed = appliedRevision !== state.revision;
       appliedRevision = state.revision;
@@ -97,7 +160,7 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
       }
     };
     const report = () => {
-      if (disposed || performance.now() < applyingUntil || !live.current.connected) return;
+      if (disposed || performance.now() < applyingUntil || !live.current.connected || ratePending.current) return;
       if (!live.current.owner) {
         // Non-owner: immediately correct any state mismatch
         const state = live.current.playback;
@@ -114,6 +177,12 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
         .finally(() => { sending = false; });
     };
     const failure = () => setError('视频加载失败，请重试或由房主切换视频源');
+    const restoreRate = () => {
+      const rate = normalizePlaybackRate(live.current.playback.playbackRate);
+      if (video.playbackRate !== rate) video.playbackRate = rate;
+    };
+    syncPlayback.current = sync;
+    video.addEventListener('ratechange', restoreRate);
     video.addEventListener('loadedmetadata', sync);
     for (const event of ['play', 'pause', 'seeked']) video.addEventListener(event, report);
     const ended = () => finish();
@@ -129,21 +198,35 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
     const heartbeat = window.setInterval(report, 10000);
     return () => {
       disposed = true;
+      syncPlayback.current = null;
       clearInterval(timer); clearInterval(heartbeat);
       video.removeEventListener('loadedmetadata', sync);
       for (const event of ['play', 'pause', 'seeked']) video.removeEventListener(event, report);
       video.removeEventListener('ended', ended);
       video.removeEventListener('error', failure);
+      video.removeEventListener('ratechange', restoreRate);
       hls?.destroy();
-      video.pause(); video.removeAttribute('src'); video.load();
+      setControls(null);
+      element.current = null;
+      player.destroy();
+      video.removeAttribute('src'); video.load();
     };
   }, [url, retry]);
 
   return <div ref={container} className={`watch-video ${theater ? 'watch-video-theater' : ''}`}>
-    <video ref={element} controls controlsList="nofullscreen" playsInline preload="auto" aria-label="共同播放视频"
-      onDoubleClick={event => { event.preventDefault(); void toggleFullscreen(); }} />
-    <RoomPlayerChat fullscreen={fullscreen} onFullscreen={() => void toggleFullscreen()} connected={connected}
+    <div ref={playerHost} className="watch-dplayer"
+      onDoubleClick={event => {
+        if (event.target instanceof HTMLElement && event.target.closest('.dplayer-video-wrap')) {
+          event.preventDefault(); void toggleFullscreen();
+        }
+      }} />
+    <RoomPlayerChat controls={controls} fullscreen={fullscreen} onFullscreen={() => void toggleFullscreen()} connected={connected}
+      playMode={playMode} canSetPlayMode={owner} playModeBusy={playModeBusy}
+      onPlayModeChange={mode => void changePlayMode(mode)}
+      playbackRate={normalizePlaybackRate(playback.playbackRate)} canSetPlaybackRate={canSetPlaybackRate}
+      rateBusy={rateBusy} onPlaybackRateChange={rate => void changePlaybackRate(rate)}
       messages={messages} liveMessages={liveMessages} userId={userId} sendChat={sendChat} />
+    {(rateError || playModeError) && <p className="watch-rate-error" role="alert">{rateError || playModeError}</p>}
     {blocked && !error && <button className="watch-unlock" onClick={() => {
       void element.current?.play().then(() => setBlocked(false)).catch(() => setBlocked(true));
     }}><HiPlay />点击开始观看</button>}

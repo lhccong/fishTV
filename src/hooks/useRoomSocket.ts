@@ -20,6 +20,7 @@ export type RoomPlayback = {
   videoUrl: string;
   playing: boolean;
   positionSeconds: number;
+  playbackRate?: number;
   updatedAt: number;
   revision: number;
   title?: string;
@@ -131,6 +132,7 @@ function useRoomConnection() {
     const networkInfo = await getClientNetworkInfo();
     const response = await emit<JoinResponse>('join_room', {
       roomId: normalizedRoomId,
+      playbackRateSupported: true,
       ...(password !== undefined ? { password } : {}),
       ...(networkInfo.location ? { clientLocation: networkInfo.location } : {}),
     });
@@ -244,6 +246,17 @@ function useRoomConnection() {
     emit<{ success: boolean; message?: RoomChatMessage; error?: string }>('send_chat', { text })
   ), [emit]);
 
+  const setPlaybackRate = useCallback(async (playbackRate: number, positionSeconds: number, revision: number) => {
+    const result = await emit<{ success: boolean; playback?: RoomPlayback; error?: string; code?: string }>(
+      'set_playback_rate', { playbackRate, positionSeconds, revision },
+    );
+    if (result.playback) {
+      const next = result.playback;
+      setPlayback(current => !current || next.revision >= current.revision ? next : current);
+    }
+    return result;
+  }, [emit]);
+
   const loadChatHistory = useCallback(() => (
     emit<{ success: boolean; messages?: RoomChatMessage[]; error?: string }>('load_chat_history')
   ), [emit]);
@@ -307,7 +320,10 @@ function useRoomConnection() {
     });
     socket.on('room_update', (nextRoom: RoomSummary) => {
       setRoom(nextRoom);
-      if (nextRoom.playback) setPlayback(nextRoom.playback);
+      if (nextRoom.playback) {
+        const next = nextRoom.playback;
+        setPlayback(current => !current || next.revision >= current.revision ? next : current);
+      }
     });
     socket.on('room_removed', (event: { roomId: string; error?: string }) => {
       if (event.roomId !== activeRoom.current && event.roomId !== desiredRoom.current) return;
@@ -323,7 +339,9 @@ function useRoomConnection() {
       setError('');
       setJoinFailure({ roomId: event.roomId, code: 'ROOM_REMOVED', error: event.error || '该房间已被移除' });
     });
-    socket.on('playback_state', (nextPlayback: RoomPlayback) => setPlayback(nextPlayback));
+    socket.on('playback_state', (next: RoomPlayback) => {
+      setPlayback(current => !current || next.revision >= current.revision ? next : current);
+    });
     socket.on('chat_message', (message: RoomChatMessage) => {
       setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message].slice(-100));
       setLiveMessages(current => current.some(item => item.id === message.id) ? current : [...current, message].slice(-40));
@@ -358,6 +376,7 @@ function useRoomConnection() {
     kickMember,
     setRoomPlayMode,
     setPlaybackClock,
+    setPlaybackRate,
     sendChat,
     loadChatHistory,
     listRooms,
