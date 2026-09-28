@@ -181,6 +181,30 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, playM
       const rate = normalizePlaybackRate(live.current.playback.playbackRate);
       if (video.playbackRate !== rate) video.playbackRate = rate;
     };
+    const handlePlaybackKey = (event: KeyboardEvent) => {
+      if (!['ArrowLeft', 'ArrowRight', ' '].includes(event.key) ||
+        disposed || event.defaultPrevented || event.isComposing ||
+        event.ctrlKey || event.altKey || event.metaKey || event.shiftKey ||
+        !live.current.owner || !live.current.connected || ratePending.current || video.readyState < 1 ||
+        document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable ||
+        target.closest('input, textarea, select, button, a, [role="button"], [role="slider"], [role="menu"], [role="textbox"], [contenteditable]:not([contenteditable="false"])'))) return;
+      if (event.key !== ' ' && (!Number.isFinite(video.duration) || video.duration <= 0)) return;
+      event.preventDefault();
+      if (event.key === ' ' && event.repeat) return;
+      // Explicit input must not be suppressed as an echo of room synchronization.
+      applyingUntil = 0;
+      if (event.key === ' ') {
+        if (video.paused) {
+          void video.play().then(() => { if (!disposed) setBlocked(false); })
+            .catch(() => { if (!disposed) setBlocked(true); });
+        } else video.pause();
+      } else {
+        player.seek(Math.max(0, Math.min(video.duration, video.currentTime + (event.key === 'ArrowRight' ? 5 : -5))));
+      }
+    };
+    document.addEventListener('keydown', handlePlaybackKey);
     syncPlayback.current = sync;
     video.addEventListener('ratechange', restoreRate);
     video.addEventListener('loadedmetadata', sync);
@@ -200,6 +224,7 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, playM
       disposed = true;
       syncPlayback.current = null;
       clearInterval(timer); clearInterval(heartbeat);
+      document.removeEventListener('keydown', handlePlaybackKey);
       video.removeEventListener('loadedmetadata', sync);
       for (const event of ['play', 'pause', 'seeked']) video.removeEventListener(event, report);
       video.removeEventListener('ended', ended);
