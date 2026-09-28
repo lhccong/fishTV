@@ -259,7 +259,6 @@ export default function WatchRoomPage() {
         <div><h1>{joined ? room.name : '观影房间'}</h1><p>房间号 {roomId.toUpperCase()} <span className={connected ? 'watch-online' : ''}>{connected ? '已连接' : '连接中'}</span></p></div>
       </div>
       <nav ref={actions} className="watch-actions">
-        {joined ? <RoomMembers room={room} userId={user?.id} open={activePanel === 'members'} onOpenChange={open => setActivePanel(open ? 'members' : null)} /> : <span><HiUserGroup />0 人在线</span>}
         {joined && <RoomInvite key={room.id} roomId={room.id} open={activePanel === 'invite'} onOpenChange={open => setActivePanel(open ? 'invite' : null)} />}
         {owner && <RoomSettings key={room.id} open={activePanel === 'settings'} onOpenChange={open => setActivePanel(open ? 'settings' : null)} />}
         {owner && <button className="watch-danger-action" disabled={!connected} onClick={async () => {
@@ -267,11 +266,11 @@ export default function WatchRoomPage() {
           const result = await dissolveRoom();
           if (result.success) navigate('/rooms'); else setError(result.error || '解散房间失败');
         }}><HiTrash />解散房间</button>}
-        <Link to="/rooms"><HiArrowLeft />房间大厅</Link>
         <button disabled={!joined || !connected} onClick={async () => {
           const result = await leaveRoom();
           if (result.success) navigate('/rooms'); else setError(result.error || '退出失败');
         }}><HiLogout />退出房间</button>
+        {joined ? <RoomMembers room={room} userId={user?.id} open={activePanel === 'members'} onOpenChange={open => setActivePanel(open ? 'members' : null)} /> : <span><HiUserGroup />0 人在线</span>}
       </nav>
     </header>
     {(error || socketError) && <p className="watch-error" role="alert">{error || socketError}</p>}
@@ -345,10 +344,13 @@ export default function WatchRoomPage() {
                 <button className="watch-primary" disabled={busy || !connected || !isRoomMedia(selection[episode - 1]?.url || '')} onClick={() => void publish()}><HiPlay />共同播放</button>
               </div>
             </div>}
-            {searching ? <p className="watch-empty" role="status">正在加载片库...</p> : catalogError ? <div className="watch-empty"><p role="alert">{catalogError}</p><button onClick={() => setCatalogAttempt(value => value + 1)}>重试</button></div> : !results.length ? <p className="watch-empty">暂无影片</p> :
-              <div className="watch-film-grid">{results.map(video => <button key={video.vod_id} className="watch-film" disabled={busy} onClick={() => void choose(video)}>
+            {searching ? <div className="watch-empty" role="status"><svg className="watch-spinner" width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeDasharray="80" strokeDashoffset="60" opacity="0.25"/><circle cx="20" cy="20" r="16" stroke="#38bdf8" strokeWidth="4" strokeLinecap="round" strokeDasharray="80" strokeDashoffset="60"><animateTransform attributeName="transform" type="rotate" from="0 20 20" to="360 20 20" dur="1s" repeatCount="indefinite"/></circle></svg><p style={{marginTop:'16px',fontSize:'14px',color:'#cbd5e1'}}>正在加载片库...</p></div> : catalogError ? <div className="watch-empty"><svg style={{fontSize:'48px',color:'#ef4444',marginBottom:'8px'}} viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg><p role="alert">{catalogError}</p><button onClick={() => setCatalogAttempt(value => value + 1)}>重试</button></div> : !results.length ? <div className="watch-empty"><HiFilm style={{fontSize:'56px',color:'#6b7280',marginBottom:'12px'}}/><p>暂无影片</p></div> :
+              <div className={`watch-film-grid ${searching ? 'watch-searching' : ''}`}>{results.map(video => <button key={video.vod_id} className="watch-film" disabled={busy} onClick={() => void choose(video)}>
                 <div className="watch-poster"><HiFilm /><img src={video.vod_pic} alt="" loading="lazy" onError={event => { event.currentTarget.style.visibility = 'hidden'; }} /><span>{video.vod_year || video.type_name}</span></div>
-                <strong>{video.vod_name}</strong><small>{video.vod_area || video.type_name}</small>
+                <div className="watch-film-meta">
+                  <strong>{video.vod_name}</strong>
+                  <small>{video.vod_area || video.type_name}</small>
+                </div>
               </button>)}</div>}
             <div className="watch-pagination"><button disabled={page <= 1 || searching} onClick={() => setPage(value => value - 1)}>上一页</button><span>{page} / {pages}</span><button disabled={page >= pages || searching} onClick={() => setPage(value => value + 1)}>下一页</button></div>
           </section>}
