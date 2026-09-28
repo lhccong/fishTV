@@ -32,8 +32,14 @@ export default function SetupPage({ onComplete }: { onComplete: () => void }) {
       await accountRequest(`/api/setup/${action === 'test' ? 'redis-test' : 'install'}`, {
         ...options, headers: { ...options.headers, 'X-Setup-Token': token },
       });
-      if (action === 'test') { setTested(true); setMessage('Redis 连接成功'); }
-      else { setToken(''); setForm({ ...form, password: '', clientSecret: '' }); onComplete(); }
+      if (action === 'test') {
+        setTested(true);
+        setMessage('Redis 连接成功');
+      } else {
+        setToken('');
+        setForm({ ...form, password: '', clientSecret: '' });
+        onComplete();
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '安装失败');
     } finally { setBusy(''); }
