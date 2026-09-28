@@ -21,6 +21,25 @@ html.dark .watch-room img,html.dark .watch-room video { filter:none !important; 
 .watch-danger-action { border-color:#713843 !important; background:#3a2329 !important; color:#ff9eaa !important; }
 .watch-danger-action:hover { background:#542b34 !important; }
 .watch-actions { position:relative; }
+.watch-actions > button,
+.watch-actions > a,
+.watch-actions > .watch-invite > summary,
+.watch-actions > .watch-settings-trigger { min-height:38px; padding:8px 10px; border:1px solid transparent; border-radius:7px; background:transparent; color:#aeb1ba; font-size:13px; font-weight:400; }
+.watch-actions > button:hover,
+.watch-actions > a:hover,
+.watch-actions > .watch-invite > summary:hover,
+.watch-actions > .watch-settings-trigger:hover { background:#2b2d31; border-color:transparent; color:#f0f1f4; }
+.watch-actions > button svg,
+.watch-actions > a svg,
+.watch-actions > .watch-invite > summary svg,
+.watch-actions > .watch-settings-trigger svg { width:16px; height:16px; color:#959aa5; }
+.watch-actions > button:hover svg,
+.watch-actions > a:hover svg,
+.watch-actions > .watch-invite > summary:hover svg,
+.watch-actions > .watch-settings-trigger:hover svg { color:#e4e6eb; }
+.watch-actions > .watch-danger-action { border-color:transparent !important; background:transparent !important; color:#e98a99 !important; }
+.watch-actions > .watch-danger-action svg { color:#e98a99; }
+.watch-actions > .watch-danger-action:hover { background:#3a2329 !important; color:#ffb0bb !important; }
 .watch-invite summary { display:flex; align-items:center; gap:6px; padding:9px 12px; border:1px solid #424348; border-radius:6px; background:#2a2b2e; color:#e7e7e9; cursor:pointer; list-style:none; white-space:nowrap; }
 .watch-invite summary::-webkit-details-marker { display:none; }
 .watch-invite summary:hover { background:#36373b; }
@@ -30,6 +49,46 @@ html.dark .watch-room img,html.dark .watch-room video { filter:none !important; 
 .watch-invite-panel button { width:100%; }
 .watch-invite-panel p { margin-top:10px; font-size:12px; color:#80cbb2; overflow-wrap:anywhere; }
 .watch-invite-panel>button { margin-top:10px; }
+.watch-settings .watch-invite-panel { width:min(390px,calc(100vw - 32px)); }
+.watch-settings-section { padding:0 0 14px; margin-bottom:14px; border-bottom:1px solid #35373d; }
+.watch-settings-section:last-of-type { padding-bottom:0; margin-bottom:0; border-bottom:0; }
+.watch-settings-section h2 { display:flex; align-items:center; gap:7px; margin:0 0 10px; color:#e4e5e9; font-size:13px; font-weight:600; }
+.watch-settings-section h2 svg { color:#e38b9a; }
+.watch-settings-section form { display:flex; align-items:flex-end; gap:8px; }
+.watch-settings-section label { flex:1; min-width:0; }
+.watch-settings-section form button { width:auto; margin:0; white-space:nowrap; }
+.watch-settings-section select { margin:0; font-size:13px; }
+.watch-settings-trigger { white-space:nowrap; }
+.watch-settings-admins { display:grid; gap:12px; }
+.watch-settings-admins label { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.watch-settings-admins span { overflow-wrap:anywhere; min-width:0; }
+.watch-settings-modal-body .watch-settings-admins input { width:18px; height:18px; min-height:0; margin:0; flex-shrink:0; accent-color:#ec4c62; }
+.watch-settings-dialog { width:min(560px,calc(100vw - 32px)); max-width:none; max-height:calc(100dvh - 32px); margin:auto; padding:0; overflow:visible; border:0; border-radius:14px; background:transparent; color:#e7e7e9; }
+.watch-settings-dialog::backdrop { background:#050608b8; backdrop-filter:blur(5px); }
+.watch-settings-modal { overflow:hidden; border:1px solid #484a50; border-radius:18px; background:linear-gradient(145deg,#24262a,#1e2023); box-shadow:0 24px 80px #0009; }
+.watch-settings-modal-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:20px 22px; border-bottom:1px solid #35373d; background:linear-gradient(135deg,#292a2e,#202123); }
+.watch-settings-modal-heading>div { display:flex; align-items:center; gap:12px; min-width:0; }
+.watch-settings-modal-heading>div>span { display:flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; background:#3b252c; color:#ff9baa; }
+.watch-settings-modal-heading>div>span svg { width:20px; height:20px; }
+.watch-settings-modal-heading h2 { margin:0; color:#f2f3f5; font-size:18px; font-weight:700; }
+.watch-settings-modal-heading p { margin:4px 0 0; color:#979ba5; font-size:12px; }
+.watch-settings-close { width:34px; height:34px; padding:7px !important; border-color:transparent !important; background:transparent !important; color:#aeb1bb !important; }
+.watch-settings-close:hover { background:#34363b !important; color:#fff !important; }
+.watch-settings-close svg { width:20px; height:20px; }
+.watch-settings-modal-body { display:grid; gap:16px; max-height:min(680px,calc(100dvh - 150px)); overflow-y:auto; padding:20px; background:#202123; scrollbar-width:thin; scrollbar-color:#51525a transparent; }
+.watch-settings-modal-body .watch-settings-section { padding:18px; margin:0; border:1px solid #34373e; border-radius:12px; background:#25272a; box-shadow:0 2px 8px #00000012; }
+.watch-settings-modal-body .watch-settings-section:last-of-type { padding-bottom:16px; margin-bottom:0; }
+.watch-settings-modal-body .watch-settings-section h2 { margin-bottom:16px; font-size:14px; }
+.watch-settings-modal-body .watch-settings-section label { display:block; color:#aeb2bc; font-size:12px; line-height:1.4; }
+.watch-settings-modal-body .watch-settings-section input,
+.watch-settings-modal-body .watch-settings-section select { display:block; width:100%; margin-top:10px; min-height:42px; border-radius:10px; background:#191b1e; border-color:#3d4149; }
+.watch-settings-modal-body .watch-settings-section form { align-items:end; gap:12px; }
+.watch-settings-modal-body .watch-settings-section form button { min-height:42px; padding:9px 18px; border-radius:10px; background:#ec4c62; border-color:#ec4c62; color:#fff; font-weight:600; }
+.watch-settings-modal-body .watch-settings-section form button:hover:not(:disabled) { background:#d93b51; }
+.watch-settings-modal-body .watch-settings-section>button { width:auto; margin-top:10px; border-radius:10px; color:#ff9eaa; border-color:#713843; background:#3a2329; }
+.watch-settings-modal-body>p { margin:0; padding:10px 12px; border-radius:7px; background:#233d37; color:#91d4bd; font-size:12px; }
+.watch-settings-modal-body .watch-settings-admins label { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.watch-settings-modal-body .watch-settings-admins label input { width:18px; min-height:18px; margin:0; border-radius:5px; }
 .watch-password-form { width:min(100%,360px); display:grid; gap:16px; }
 .watch-password-form input { margin-top:8px; }
 .watch-password-form p { color:#ff9aab; font-size:13px; }
@@ -75,7 +134,12 @@ html.dark .watch-room img,html.dark .watch-room video { filter:none !important; 
 .watch-roster-panel ul { list-style:none; padding:0; margin:0; display:grid; gap:14px; }
 .watch-roster-panel li { display:flex; align-items:center; gap:10px; }
 .watch-roster-panel strong { flex:1; font-size:13px; font-weight:400; overflow-wrap:anywhere; }
+.watch-member-location { display:block; margin-top:3px; color:#777c87; font-size:11px; font-weight:400; }
 .watch-roster-panel .watch-member-owner { color:#e7b56c; }
+.watch-member-kick { width:26px; height:26px; padding:5px !important; border-color:#713843 !important; background:#3a2329 !important; color:#ff9eaa !important; }
+.watch-member-kick:hover { background:#542b34 !important; }
+.watch-member-kick svg { width:14px; height:14px; }
+.watch-roster-error { margin-top:14px !important; color:#ff9aab; font-size:12px; }
 .watch-main { min-height:0; display:flex; flex-direction:column; overflow:hidden; padding:20px 26px; }
 .watch-main.watch-browsing { display:block; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#51525a transparent; }
 .watch-picker-heading,.watch-now { flex-shrink:0; display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; }

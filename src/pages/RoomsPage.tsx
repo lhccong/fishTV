@@ -8,6 +8,8 @@ import { useCurrentUser } from '../context/AccessGate';
 import { useRoomSocket, type RoomSummary } from '../hooks/useRoomSocket';
 import '../rooms.css';
 
+const defaultRoomCover = 'https://oss.cqbo.com/moyu/moyu.png';
+
 export default function RoomsPage() {
   const connection = useRoomSocket();
   const user = useCurrentUser();
@@ -64,14 +66,38 @@ export default function RoomsPage() {
     <section className="rooms-list">
       <div className="rooms-list-heading"><h2>发现放映室</h2><span>{rooms.length} 个放映室</span></div>
       {connection.error || error ? <button disabled={!connected} onClick={() => { setLoading(true); void refresh(); }} className="rounded border px-4 py-2 disabled:opacity-50">重新加载</button> : loading ? <p role="status">{connected ? '正在加载房间...' : '正在连接房间服务...'}</p> : rooms.length === 0 ? <p className="py-12 text-center text-gray-500">暂无房间</p> :
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">{rooms.map(item => <article key={item.id} className="rooms-card min-w-0 p-5">
-          <div className="flex items-start gap-3"><img src="https://oss.cqbo.com/moyu/moyu.png" alt="" className="h-12 w-12 shrink-0 rounded object-contain" />
-            <div className="min-w-0"><h2 className="break-all text-lg font-semibold">{item.name}</h2>{item.hasPassword && <span className="inline-flex items-center gap-1 text-xs app-muted"><HiLockClosed />密码房间</span>}<p className="text-sm text-gray-500">房间号 {item.id}</p></div>
-          </div>
-          <div className="mt-4 flex items-center justify-between gap-2"><span className="flex items-center gap-1 text-sm text-gray-500"><HiUserGroup />{item.memberCount} 人 · {item.playback ? '正在观影' : '等待选片'}</span>
-            <button disabled={!connected || busy} onClick={async () => { setBusy(true); try { await enter(item.id); } finally { setBusy(false); } }} className="rooms-enter">{room?.id === item.id ? '进入房间' : '加入房间'}<HiArrowRight /></button>
-          </div>
-        </article>)}</div>}
+        <div className="rooms-grid">{rooms.map(item => {
+          const playback = item.playback;
+          const activate = async () => {
+            if (!connected || busy) return;
+            setBusy(true);
+            try { await enter(item.id); } finally { setBusy(false); }
+          };
+          return <article key={item.id} className="rooms-card" role="link" tabIndex={connected && !busy ? 0 : -1}
+            onClick={activate}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                void activate();
+              }
+            }}>
+            <div className="rooms-card-cover">
+              <img src={playback?.cover || defaultRoomCover} alt="" onError={event => {
+                if (event.currentTarget.src !== defaultRoomCover) event.currentTarget.src = defaultRoomCover;
+              }} />
+              <span className={`rooms-card-status ${playback ? 'is-playing' : ''}`}>{playback ? '正在播放' : '等待选片'}</span>
+            </div>
+            <div className="rooms-card-body">
+              <div className="rooms-card-kicker"><HiUserGroup />{item.memberCount} 人在线 {item.hasPassword && <><i /> <HiLockClosed />密码房间</>}</div>
+              <h2>{item.name}</h2>
+              <p className="rooms-card-media">{playback ? `${playback.title || '正在播放'} · 第 ${playback.episode} 集` : '等待房主选片'}</p>
+              <div className="rooms-card-footer">
+                <span>{playback ? '共同观看中' : `房间号 ${item.id}`}</span>
+                <button disabled={!connected || busy} onClick={async event => { event.stopPropagation(); setBusy(true); try { await enter(item.id); } finally { setBusy(false); } }} className="rooms-enter">{room?.id === item.id ? '进入房间' : '加入房间'}<HiArrowRight /></button>
+              </div>
+            </div>
+          </article>;
+        })}</div>}
     </section>
     </div>
     {creating && <CreateRoomDialog onClose={() => setCreating(false)} onCreated={async created => {

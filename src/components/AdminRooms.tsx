@@ -106,7 +106,9 @@ export default function AdminRooms({ onError }: Props) {
       <h4>在线成员（{current.members.length}）</h4>
       <ul className="account-room-members">{current.members.map(member => <li key={member.id}>
         {member.avatarUrl ? <img src={member.avatarUrl} alt="" referrerPolicy="no-referrer" /> : <HiUserGroup />}
-        <div><strong>{member.username}{member.id === current.ownerId ? '（房主）' : ''}</strong><small>{member.id}</small></div>
+        <div><strong>{member.username}{member.id === current.ownerId ? '（房主）' : ''}</strong>
+          <small>{member.location || '未知地区'} · IP：{member.clientIp || '未知'} · 设备：{member.deviceId || '未知'}</small>
+        </div>
       </li>)}</ul>
       {!current.members.length && <p className="account-help">暂无在线成员</p>}
       <form onSubmit={event => {

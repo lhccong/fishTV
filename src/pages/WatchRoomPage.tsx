@@ -9,7 +9,7 @@ import type { Video } from '../api/types';
 import { allEpisodes, isRoomMedia, roomEpisodes } from '../lib/roomVideo';
 import RoomVideoPlayer from '../components/RoomVideoPlayer';
 import RoomInvite from '../components/RoomInvite';
-import RoomPasswordSettings from '../components/RoomPasswordSettings';
+import RoomSettings from '../components/RoomSettings';
 import RoomMembers from '../components/RoomMembers';
 import '../watch-room.css';
 
@@ -21,8 +21,8 @@ export default function WatchRoomPage() {
   const user = useCurrentUser();
   const { room, playback, messages, liveMessages, connected, joinFailure, error: socketError, joinRoom, leaveRoom, dissolveRoom, setRoomPlayback, advanceRoomPlayback, setRoomPlayMode, setPlaybackClock, sendChat } = useRoomSocket();
   const joined = room?.id === roomId.toUpperCase();
-  const owner = joined && room.ownerId === user?.id;
-  const [activePanel, setActivePanel] = useState<'invite' | 'password' | 'members' | null>(null);
+  const owner = joined && (room.ownerId === user?.id || Boolean(user?.id && room.adminIds?.includes(user.id)));
+  const [activePanel, setActivePanel] = useState<'invite' | 'settings' | 'members' | null>(null);
   const actions = useRef<HTMLElement>(null);
   const [joinError, setJoinError] = useState('');
   const [joinAttempt, setJoinAttempt] = useState(0);
@@ -30,7 +30,8 @@ export default function WatchRoomPage() {
   const [joiningWithPassword, setJoiningWithPassword] = useState(false);
   const passwordRequired = joinFailure?.roomId === roomId.toUpperCase() &&
     ['ROOM_PASSWORD_REQUIRED', 'ROOM_PASSWORD_INVALID'].includes(joinFailure.code || '');
-  const roomRemoved = joinFailure?.roomId === roomId.toUpperCase() && joinFailure.code === 'ROOM_REMOVED';
+  const roomRemoved = joinFailure?.roomId === roomId.toUpperCase() &&
+    ['ROOM_REMOVED', 'ROOM_KICKED'].includes(joinFailure.code || '');
   const [source, setSource] = useState(Object.keys(VIDEO_SOURCES)[0] || '');
   const [category, setCategory] = useState(6);
   const [query, setQuery] = useState('');
@@ -65,6 +66,7 @@ export default function WatchRoomPage() {
   useEffect(() => {
     if (!activePanel) return;
     const dismiss = (event: PointerEvent) => {
+      if (activePanel === 'settings') return;
       const target = event.target;
       if (!(target instanceof Element) || !actions.current?.contains(target) || !target.closest('.watch-invite')) {
         setActivePanel(null);
@@ -114,11 +116,23 @@ export default function WatchRoomPage() {
       const episode = video && roomEpisodes(video)[current.episode - 1];
       setPlayingVideo(video || null);
       if (!video || !episode || !isRoomMedia(episode.url)) { setMediaError('该集暂不支持共同播放，请房主切换影片'); return; }
+      if (owner && !current.cover && video.vod_pic) {
+        void setRoomPlayback({
+          videoId: current.videoId,
+          sourceId: current.sourceId,
+          episode: current.episode,
+          videoUrl: episode.url,
+          title: current.title || video.vod_name,
+          cover: video.vod_pic,
+          positionSeconds: current.positionSeconds,
+          playing: current.playing,
+        });
+      }
       setMedia({ key: mediaKey, url: episode.url, title: video.vod_name });
     }).catch(() => { if (!cancelled) setMediaError('影片加载失败，请重试'); })
       .finally(() => clearTimeout(timeout));
     return () => { cancelled = true; clearTimeout(timeout); };
-  }, [joined, mediaKey, mediaAttempt]);
+  }, [joined, mediaKey, mediaAttempt, owner, setRoomPlayback]);
 
   const changePlayingEpisode = async (nextEpisode: number) => {
     if (!owner || !playback || !playingVideo || busy) return;
@@ -133,6 +147,7 @@ export default function WatchRoomPage() {
         episode: nextEpisode,
         videoUrl: item.url,
         title: playingVideo.vod_name,
+        cover: playingVideo.vod_pic,
         positionSeconds: 0,
         playing: true,
       });
@@ -188,6 +203,7 @@ export default function WatchRoomPage() {
       episode: nextIndex + 1,
       videoUrl: next.url,
       title: playingVideo.vod_name,
+      cover: playingVideo.vod_pic,
       positionSeconds: 0,
       playing: true,
     });
@@ -212,7 +228,11 @@ export default function WatchRoomPage() {
     try {
       const result = await getVideoDetail(String(video.vod_id), VIDEO_SOURCES[source].url);
       if (!result.list?.[0]) throw new Error('影片详情不存在');
-      const detail = result.list[0];
+      // 部分片源的详情接口不返回封面，保留搜索结果中的图片用于房间卡片。
+      const detail = {
+        ...result.list[0],
+        vod_pic: result.list[0].vod_pic || video.vod_pic,
+      };
       const episodes = allEpisodes(detail);
       const firstPlayable = episodes.findIndex(item => isRoomMedia(item.url));
       setSelected(detail); setSelectedSource(source); setEpisode(firstPlayable >= 0 ? firstPlayable + 1 : 1);
@@ -225,6 +245,7 @@ export default function WatchRoomPage() {
     const result = await setRoomPlayback({
       videoId: String(selected.vod_id), sourceId: selectedSource, episode,
       videoUrl: selection[episode - 1].url, title: selected.vod_name,
+      cover: selected.vod_pic,
       positionSeconds: 0, playing: true,
     });
     setBusy(false);
@@ -240,7 +261,7 @@ export default function WatchRoomPage() {
       <nav ref={actions} className="watch-actions">
         {joined ? <RoomMembers room={room} userId={user?.id} open={activePanel === 'members'} onOpenChange={open => setActivePanel(open ? 'members' : null)} /> : <span><HiUserGroup />0 人在线</span>}
         {joined && <RoomInvite key={room.id} roomId={room.id} open={activePanel === 'invite'} onOpenChange={open => setActivePanel(open ? 'invite' : null)} />}
-        {owner && <RoomPasswordSettings key={room.id} open={activePanel === 'password'} onOpenChange={open => setActivePanel(open ? 'password' : null)} />}
+        {owner && <RoomSettings key={room.id} open={activePanel === 'settings'} onOpenChange={open => setActivePanel(open ? 'settings' : null)} />}
         {owner && <button className="watch-danger-action" disabled={!connected} onClick={async () => {
           if (!window.confirm('解散后房间、播放记录和聊天记录都会被删除，在线成员也会被移出。确定解散房间吗？')) return;
           const result = await dissolveRoom();

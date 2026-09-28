@@ -40,7 +40,7 @@ export default function CreateWatchRoom({ video, source, episode, url, getPositi
       if (supported) {
         const published = await setRoomPlayback({
           videoId: String(video.vod_id), sourceId: source, episode, videoUrl: url,
-          title: video.vod_name, playing: true,
+          title: video.vod_name, cover: video.vod_pic, playing: true,
           positionSeconds: Number.isFinite(position) ? Math.max(0, position) : 0,
         });
         if (!published.success) throw new Error(published.error || '设置共同播放失败');

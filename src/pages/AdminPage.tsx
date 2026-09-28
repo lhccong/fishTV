@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { HiLogout, HiSave, HiRefresh, HiLogin, HiChartBar, HiUserGroup, HiFilm, HiCog, HiShieldCheck } from 'react-icons/hi';
 import { AccountError, accountRequest, jsonBody } from '../api/account';
 import AdminRooms from '../components/AdminRooms';
+import AdminBans from '../components/AdminBans';
 import '../account.css';
 
 type Overview = { username: string; redis: { connected: boolean }; server: { uptimeSeconds: number } };
@@ -11,6 +12,7 @@ type VideoSource = { id: string; name: string; url: string; enabled: boolean; bu
 const sections = [
   { id: 'overview', label: '运行概览', icon: HiChartBar },
   { id: 'rooms', label: '房间管理', icon: HiUserGroup },
+  { id: 'bans', label: 'IP / 设备封禁', icon: HiShieldCheck },
   { id: 'sources', label: '视频源', icon: HiFilm },
   { id: 'settings', label: '站点配置', icon: HiCog },
   { id: 'account', label: '管理员账号', icon: HiShieldCheck },
@@ -193,6 +195,7 @@ export default function AdminPage() {
     </dl>
     </section>}
     {active.id === 'rooms' && <AdminRooms onError={report} />}
+    {active.id === 'bans' && <AdminBans onError={report} />}
     {active.id === 'settings' && <form onSubmit={saveConfig} className="account-section"><fieldset disabled={Boolean(busy) || !config}>
       <h2>站点与登录配置</h2>
       <label>站点地址<input required type="url" maxLength={512} value={config?.siteOrigin || ''} onChange={e => setConfig(config && { ...config, siteOrigin: e.target.value })} /></label>

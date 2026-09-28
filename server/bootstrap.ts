@@ -4,6 +4,7 @@ import { mountSetupApi } from './setupApi.js';
 import { mountAdminApi } from './adminApi.js';
 import { mountUserAuth } from './userAuth.js';
 import { initVideoSources } from './videoSources.js';
+import { initSiteBans, mountSiteBanGuard } from './siteBan.js';
 
 export async function mountServices(app: Express) {
   loadConfig();
@@ -14,6 +15,8 @@ export async function mountServices(app: Express) {
   });
   mountSetupApi(app);
   await mountAdminApi(app);
+  await initSiteBans();
+  mountSiteBanGuard(app);
   await initVideoSources();
   mountUserAuth(app);
   app.use('/api', (_req, res) => res.status(404).json({ code: 'NOT_FOUND', error: '接口不存在' }));

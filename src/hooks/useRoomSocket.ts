@@ -1,11 +1,15 @@
 import { createContext, createElement, useContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { useCurrentUser } from '../context/AccessGate';
+import { getClientNetworkInfo } from '../lib/clientNetworkInfo';
 
 export type RoomMember = {
   id: string;
   username: string;
   avatarUrl?: string;
+  location?: string;
+  clientIp?: string;
+  deviceId?: string;
   joinedAt: number;
 };
 
@@ -19,6 +23,7 @@ export type RoomPlayback = {
   updatedAt: number;
   revision: number;
   title?: string;
+  cover?: string;
 };
 
 export type RoomChatMessage = {
@@ -34,6 +39,7 @@ export type RoomSummary = {
   id: string;
   name: string;
   ownerId: string;
+  adminIds?: string[];
   createdAt: number;
   members: RoomMember[];
   memberCount: number;
@@ -122,10 +128,12 @@ function useRoomConnection() {
       return { success: false, code: 'JOIN_BUSY', error: '正在重新连接房间' };
     }
     joinInFlight.current = true;
-    const response = await emit<JoinResponse>(
-      'join_room',
-      { roomId: normalizedRoomId, ...(password !== undefined ? { password } : {}) },
-    );
+    const networkInfo = await getClientNetworkInfo();
+    const response = await emit<JoinResponse>('join_room', {
+      roomId: normalizedRoomId,
+      ...(password !== undefined ? { password } : {}),
+      ...(networkInfo.location ? { clientLocation: networkInfo.location } : {}),
+    });
     joinInFlight.current = false;
     if (desiredRoom.current !== normalizedRoomId) return response;
     if (response.success && response.room) {
@@ -199,6 +207,21 @@ function useRoomConnection() {
     if (result.success && result.room) setRoom(result.room);
     return result;
   }, [emit]);
+  const setRoomName = useCallback(async (name: string) => {
+    const result = await emit<{ success: boolean; room?: RoomSummary; error?: string }>('set_room_name', { name });
+    if (result.success && result.room) setRoom(result.room);
+    return result;
+  }, [emit]);
+  const setRoomAdmins = useCallback(async (adminIds: string[]) => {
+    const result = await emit<{ success: boolean; room?: RoomSummary; error?: string }>('set_room_admins', { adminIds });
+    if (result.success && result.room) setRoom(result.room);
+    return result;
+  }, [emit]);
+  const kickMember = useCallback(async (memberId: string) => {
+    const result = await emit<{ success: boolean; room?: RoomSummary; error?: string }>('kick_member', { memberId });
+    if (result.success && result.room) setRoom(result.room);
+    return result;
+  }, [emit]);
   const setRoomPlayMode = useCallback(async (mode: NonNullable<RoomSummary['playMode']>) => {
     const result = await emit<{ success: boolean; room?: RoomSummary; error?: string }>('set_play_mode', { mode });
     if (result.success && result.room) setRoom(result.room);
@@ -252,7 +275,35 @@ function useRoomConnection() {
     });
     socket.on('connect_error', (reason) => {
       setConnected(false);
-      setError(reason.message === 'LOGIN_REQUIRED' ? '请先登录摸鱼岛' : '房间连接中，正在自动重试...');
+      if (reason.message === 'SITE_BANNED') {
+        socket.io.reconnection(false);
+        setError('当前访问受到限制');
+      } else {
+        setError(reason.message === 'LOGIN_REQUIRED' ? '请先登录摸鱼岛' : '房间连接中，正在自动重试...');
+      }
+    });
+    socket.on('kicked', (event: { roomId?: string; code?: string; message?: string; stopReconnect?: boolean }) => {
+      if (event.stopReconnect || event.code === 'SITE_BANNED') socket.io.reconnection(false);
+      if (event.code === 'ROOM_KICKED') {
+        desiredRoom.current = null;
+        activeRoom.current = null;
+        if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
+        retryTimer.current = null;
+        retryCount.current = 0;
+        setRoom(null);
+        setPlayback(null);
+        setMessages([]);
+        setLiveMessages([]);
+        setJoinFailure({
+          roomId: event.roomId || '',
+          code: event.code,
+          error: event.message || '你已被房主移出房间',
+        });
+        setError('');
+        return;
+      }
+      setConnected(false);
+      setError(event.message || '当前连接已被断开');
     });
     socket.on('room_update', (nextRoom: RoomSummary) => {
       setRoom(nextRoom);
@@ -302,6 +353,9 @@ function useRoomConnection() {
     setRoomPlayback,
     advanceRoomPlayback,
     setRoomPassword,
+    setRoomName,
+    setRoomAdmins,
+    kickMember,
     setRoomPlayMode,
     setPlaybackClock,
     sendChat,

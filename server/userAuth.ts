@@ -4,6 +4,7 @@ import { getConfig, oauthConfigured, setupRequired } from './config.js';
 import { mustRedis } from './redis.js';
 import { cookie, digest, fail, limit, requireSameOrigin, secureCookie } from './security.js';
 import { listVideoSources } from './videoSources.js';
+import { createDeviceId, DEVICE_COOKIE, getDeviceIdFromCookie } from './deviceIdentity.js';
 
 const USER_COOKIE = 'fish_tv_user_sid';
 const FLOW_COOKIE = 'fish_tv_oauth_flow';
@@ -61,6 +62,11 @@ export function mountUserAuth(app: Express) {
   });
   app.get('/api/auth/moyu/status', async (req, res) => {
     const session = setupRequired() ? null : await getUserSession(req);
+    if (!getDeviceIdFromCookie(req.headers.cookie)) {
+      res.cookie(DEVICE_COOKIE, createDeviceId(), {
+        path: '/', httpOnly: true, sameSite: 'lax', secure: secureCookie(), maxAge: SESSION_TTL * 1000,
+      });
+    }
     res.json({ authenticated: Boolean(session), enabled: oauthConfigured(), user: session?.profile || null });
   });
   app.post('/api/auth/moyu/logout', requireSameOrigin, async (req, res) => {
@@ -148,6 +154,11 @@ export function mountUserAuth(app: Express) {
       }), { EX: SESSION_TTL });
       if (validToken(old)) await redis.del(sessionKey(old));
       res.cookie(USER_COOKIE, sid, { path: '/', httpOnly: true, sameSite: 'lax', secure: secureCookie(), maxAge: SESSION_TTL * 1000 });
+      if (!getDeviceIdFromCookie(req.headers.cookie)) {
+        res.cookie(DEVICE_COOKIE, createDeviceId(), {
+          path: '/', httpOnly: true, sameSite: 'lax', secure: secureCookie(), maxAge: SESSION_TTL * 1000,
+        });
+      }
       console.info('[auth] oauth_success');
       res.redirect(returnPath(saved.returnPath));
     } catch {

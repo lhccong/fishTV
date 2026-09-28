@@ -7,7 +7,7 @@
 .account-section { padding: 24px 0; border-bottom: 1px solid #dce0e3; }
 .account-section h2 { display: flex; gap: 8px; align-items: center; font-size: 17px; font-weight: 600; margin-bottom: 18px; }
 .account-page label { display: flex; flex-direction: column; gap: 8px; font-size: 14px; margin: 14px 0 0; min-width: 0; }
-.account-page input { width: 100%; min-width: 0; height: 42px; border: 1px solid #b9c2c9; border-radius: 6px; background: white; color: #202427; padding: 8px 12px; }
+.account-page input,.account-page select { width: 100%; min-width: 0; height: 42px; border: 1px solid #b9c2c9; border-radius: 6px; background: white; color: #202427; padding: 8px 12px; }
 .account-page input:focus { outline: 2px solid #09847e; outline-offset: 2px; }
 .account-page output { display: block; background: #edf1f2; padding: 12px; color: #3f5559; overflow-wrap: anywhere; border-radius: 4px; }
 .account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }

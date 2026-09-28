@@ -9,6 +9,8 @@ import { acquireConfigLease, getConfig, persistConfig, setupRequired, validateCo
 import { listVideoSources, removeVideoSource, upsertVideoSource } from './videoSources.js';
 import { adminRoomList, adminRemoveRoom, adminSetRoom, adminSetRoomPolicy } from './socket.js';
 import { RoomInputError } from './roomPolicy.js';
+import { addSiteBan, listSiteBans, removeSiteBan } from './siteBan.js';
+import { kickConnectionsMatchingBan } from './socket.js';
 
 export async function mountAdminApi(app: Express) {
   if (!setupRequired() && await initRedis()) await initAdminCredentials();
@@ -49,6 +51,22 @@ export async function mountAdminApi(app: Express) {
   });
   app.get('/api/admin/rooms', requireAdmin, limit('admin_rooms_read', 60), async (_req, res) => {
     res.json(await adminRoomList());
+  });
+  app.get('/api/admin/bans', requireAdmin, (_req, res) => {
+    res.json({ bans: listSiteBans() });
+  });
+  app.post('/api/admin/bans', requireSameOrigin, requireAdmin, limit('admin_bans_write', 20), async (req, res) => {
+    const result = await addSiteBan(req.body || {});
+    if (!result.success || !result.ban) return fail(res, 400, 'BAN_REJECTED', result.error || '封禁失败');
+    const kicked = kickConnectionsMatchingBan(result.ban);
+    console.info('[admin] site_ban_added');
+    res.json({ success: true, ban: result.ban, kicked });
+  });
+  app.delete('/api/admin/bans/:id', requireSameOrigin, requireAdmin, limit('admin_bans_write', 20), async (req, res) => {
+    const result = await removeSiteBan(String(req.params.id));
+    if (!result.success) return fail(res, 404, 'BAN_NOT_FOUND', result.error || '封禁记录不存在');
+    console.info('[admin] site_ban_removed');
+    res.json({ success: true });
   });
   app.put('/api/admin/room-policy', requireSameOrigin, requireAdmin, limit('admin_rooms_write', 20), async (req, res) => {
     try {

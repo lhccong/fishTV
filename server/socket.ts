@@ -6,6 +6,9 @@ import { getUserSession, type UserSession } from './userAuth.js';
 import { mustRedis } from './redis.js';
 import { getVideoSource } from './videoSources.js';
 import { cookie, digest } from './security.js';
+import { getSocketIp } from './clientNetwork.js';
+import { getDeviceIdFromCookie } from './deviceIdentity.js';
+import { isSiteBanned, type SiteBan } from './siteBan.js';
 import { expiration, idleMinutes, roomPasswordHash, roomRetention, verifyRoomPassword,
   ROOM_POLICY_KEY, RoomInputError, type RoomRetention, type RoomPolicy } from './roomPolicy.js';
 
@@ -27,6 +30,9 @@ type RoomMember = {
   id: string;
   username: string;
   avatarUrl?: string;
+  location?: string;
+  clientIp?: string;
+  deviceId?: string;
   joinedAt: number;
 };
 
@@ -40,6 +46,7 @@ type PlaybackState = {
   updatedAt: number;
   revision: number;
   title?: string;
+  cover?: string;
 };
 
 type ChatMessage = {
@@ -55,6 +62,7 @@ type RoomState = RoomRetention & {
   id: string;
   name: string;
   ownerId: string;
+  adminIds?: string[];
   createdAt: number;
   members: Record<string, RoomMember>;
   playback: PlaybackState | null;
@@ -94,14 +102,23 @@ function publicRoom(room: RoomState) {
     id: room.id,
     name: room.name,
     ownerId: room.ownerId,
+    adminIds: Array.isArray(room.adminIds) ? room.adminIds.filter(id => id !== room.ownerId) : [],
     createdAt: room.createdAt,
-    members: Object.values(room.members),
+    members: Object.values(room.members).map(({ clientIp: _ip, deviceId: _device, ...member }) => member),
     memberCount: Object.keys(room.members).length,
     playback: room.playback,
     hasPassword: Boolean(room.passwordHash),
     permanent: Boolean(room.permanent),
     playMode: room.playMode || 'sequential',
   };
+}
+
+function isRoomManager(room: RoomState, userId: string) {
+  return room.ownerId === userId || (Array.isArray(room.adminIds) && room.adminIds.includes(userId));
+}
+
+function adminRoom(room: RoomState) {
+  return { ...publicRoom(room), members: Object.values(room.members) };
 }
 
 function profileToMember(session: UserSession): RoomMember {
@@ -125,6 +142,9 @@ async function loadRoom(roomId: string) {
   }
   parsed.playMode = parsed.playMode === 'single' || parsed.playMode === 'random'
     ? parsed.playMode : 'sequential';
+  parsed.adminIds = Array.isArray(parsed.adminIds)
+    ? [...new Set(parsed.adminIds.filter(id => typeof id === 'string' && id !== parsed.ownerId))]
+    : [];
   // Redis snapshots may contain members from a previous process; sockets are authoritative.
   if (liveIo) {
     const previousEmptySince = parsed.emptySince;
@@ -183,7 +203,7 @@ export function adminRoomList() {
     const rooms = [];
     for (const id of ids) {
       const room = await loadRoom(id);
-      if (room) rooms.push({ ...publicRoom(room), emptyMinutes: room.emptyMinutes ?? null,
+      if (room) rooms.push({ ...adminRoom(room), emptyMinutes: room.emptyMinutes ?? null,
         emptySince: room.emptySince ?? null, expiresAt: expiration(room, policy) });
     }
     return { policy, rooms };
@@ -231,6 +251,21 @@ export function adminRemoveRoom(roomId: string) {
     console.info('[rooms] admin_room_removed');
     return { ok: true };
   });
+}
+
+export function kickConnectionsMatchingBan(ban: SiteBan) {
+  if (!liveIo) return 0;
+  let kicked = 0;
+  for (const socket of liveIo.sockets.sockets.values()) {
+    const ip = getSocketIp(socket);
+    const deviceId = getDeviceIdFromCookie(socket.handshake.headers.cookie);
+    if ((ban.type === 'ip' && ip === ban.value) || (ban.type === 'device' && deviceId === ban.value)) {
+      socket.emit('kicked', { code: 'SITE_BANNED', message: '当前访问受到限制', stopReconnect: true });
+      socket.disconnect(true);
+      kicked += 1;
+    }
+  }
+  return kicked;
 }
 
 function grantKey(socket: AuthenticatedSocket, roomId: string) {
@@ -281,6 +316,14 @@ export function mountSocketServer(httpServer: HttpServer) {
 
   io.use(async (socket, next) => {
     try {
+      const siteBan = isSiteBanned({
+        ip: getSocketIp(socket),
+        deviceId: getDeviceIdFromCookie(socket.handshake.headers.cookie),
+      });
+      if (siteBan) {
+        next(new Error('SITE_BANNED'));
+        return;
+      }
       const request = {
         headers: { cookie: String(socket.handshake.headers.cookie || '') },
       } as Request;
@@ -376,6 +419,7 @@ export function mountSocketServer(httpServer: HttpServer) {
           id,
           name,
           ownerId: session.profile.id,
+          adminIds: [],
           createdAt: Date.now(),
           members: {},
           playback: null,
@@ -402,7 +446,7 @@ export function mountSocketServer(httpServer: HttpServer) {
           ackError(callback, '房间不存在或已过期', 'ROOM_NOT_FOUND');
           return;
         }
-        if (room.passwordHash && room.ownerId !== session.profile.id &&
+        if (room.passwordHash && !isRoomManager(room, session.profile.id) &&
           await mustRedis().get(grantKey(socket, roomId)) !== digest(room.passwordHash)) {
           if (payload?.password === undefined || payload.password === '') {
             ackError(callback, '该房间需要密码', 'ROOM_PASSWORD_REQUIRED');
@@ -435,7 +479,12 @@ export function mountSocketServer(httpServer: HttpServer) {
             broadcastRoom(io, previousRoom);
           }
         }
-        room.members[session.profile.id] = profileToMember(session);
+        room.members[session.profile.id] = {
+          ...profileToMember(session),
+          ...(String(payload?.clientLocation || '').trim() ? { location: String(payload.clientLocation).trim().slice(0, 32) } : {}),
+          clientIp: getSocketIp(socket) || undefined,
+          deviceId: getDeviceIdFromCookie(socket.handshake.headers.cookie) || undefined,
+        };
         await saveRoom(room);
         await socket.join(roomId);
         socket.data.roomId = roomId;
@@ -450,7 +499,7 @@ export function mountSocketServer(httpServer: HttpServer) {
       const id = requireJoined(socket, callback);
       if (!id) return;
       const room = await loadRoom(id);
-      if (!room || room.ownerId !== session.profile.id) {
+      if (!room || !isRoomManager(room, session.profile.id)) {
         ackError(callback, '只有房主可以修改密码', 'ROOM_FORBIDDEN');
         return;
       }
@@ -461,11 +510,54 @@ export function mountSocketServer(httpServer: HttpServer) {
       callback({ success: true, room: publicRoom(room) });
     });
 
+    handle('set_room_name', async (payload, callback) => {
+      const id = requireJoined(socket, callback);
+      if (!id) return;
+      const room = await loadRoom(id);
+      if (!room || !isRoomManager(room, session.profile.id)) {
+        ackError(callback, '只有房主可以修改房间名称', 'ROOM_FORBIDDEN');
+        return;
+      }
+      const name = normalizeText(payload?.name, 80);
+      if (!name) {
+        ackError(callback, '房间名称不能为空', 'INVALID_ROOM_NAME');
+        return;
+      }
+      room.name = name;
+      await saveRoom(room);
+      broadcastRoom(io, room);
+      console.info('[rooms] owner_room_name_updated');
+      callback({ success: true, room: publicRoom(room) });
+    });
+
+    handle('set_room_admins', async (payload, callback) => {
+      const id = requireJoined(socket, callback);
+      if (!id) return;
+      const room = await loadRoom(id);
+      if (!room || !isRoomManager(room, session.profile.id)) {
+        ackError(callback, '只有房主或管理员可以设置房间管理员', 'ROOM_FORBIDDEN');
+        return;
+      }
+      const requested: unknown = payload?.adminIds;
+      if (!Array.isArray(requested) || requested.length > 100 ||
+        requested.some(value => typeof value !== 'string' || !value || value.length > 128 ||
+          value === room.ownerId || (!room.members[value] && !room.adminIds?.includes(value)))) {
+        ackError(callback, '管理员名单无效，请刷新后重试', 'INVALID_ROOM_ADMINS');
+        return;
+      }
+      const adminIds = [...new Set(requested as string[])];
+      room.adminIds = adminIds;
+      await saveRoom(room);
+      broadcastRoom(io, room);
+      console.info('[rooms] owner_room_admins_updated');
+      callback({ success: true, room: publicRoom(room) });
+    });
+
     handle('set_play_mode', async (payload, callback) => {
       const id = requireJoined(socket, callback);
       if (!id) return;
       const room = await loadRoom(id);
-      if (!room || room.ownerId !== session.profile.id) {
+      if (!room || !isRoomManager(room, session.profile.id)) {
         ackError(callback, '只有房主可以修改播放设置', 'ROOM_FORBIDDEN');
         return;
       }
@@ -477,6 +569,39 @@ export function mountSocketServer(httpServer: HttpServer) {
       room.playMode = mode;
       await saveRoom(room);
       broadcastRoom(io, room);
+      callback({ success: true, room: publicRoom(room) });
+    });
+
+    handle('kick_member', async (payload, callback) => {
+      const roomId = requireJoined(socket, callback);
+      if (!roomId) return;
+      const room = await loadRoom(roomId);
+      const memberId = normalizeText(payload?.memberId, 128);
+      if (!room || !isRoomManager(room, session.profile.id)) {
+        ackError(callback, '只有房主可以移出成员', 'ROOM_FORBIDDEN');
+        return;
+      }
+      if (!memberId || memberId === room.ownerId || !room.members[memberId]) {
+        ackError(callback, '在线成员不存在', 'ROOM_MEMBER_NOT_FOUND');
+        return;
+      }
+      const targets = (await io.in(roomId).fetchSockets())
+        .filter(memberSocket => memberSocket.data.session?.profile.id === memberId);
+      delete room.members[memberId];
+      room.adminIds = room.adminIds?.filter(id => id !== memberId);
+      await saveRoom(room);
+      for (const target of targets) {
+        target.emit('kicked', {
+          roomId,
+          code: 'ROOM_KICKED',
+          message: '你已被房主移出房间',
+          stopReconnect: true,
+        });
+        await target.leave(roomId);
+        if (target.data.roomId === roomId) delete target.data.roomId;
+      }
+      broadcastRoom(io, room);
+      console.info('[rooms] owner_member_kicked');
       callback({ success: true, room: publicRoom(room) });
     });
 
@@ -503,7 +628,7 @@ export function mountSocketServer(httpServer: HttpServer) {
       const roomId = requireJoined(socket, callback);
       if (!roomId) return;
       const room = await loadRoom(roomId);
-      if (!room || room.ownerId !== session.profile.id) {
+      if (!room || !isRoomManager(room, session.profile.id)) {
         ackError(callback, '只有房主可以解散房间', 'ROOM_FORBIDDEN');
         return;
       }
@@ -525,7 +650,7 @@ export function mountSocketServer(httpServer: HttpServer) {
       const roomId = requireJoined(socket, callback);
       if (!roomId) return;
       const room = await loadRoom(roomId);
-      if (!room || room.ownerId !== session.profile.id) {
+      if (!room || !isRoomManager(room, session.profile.id)) {
         ackError(callback, '只有房主可以控制共同播放');
         return;
       }
@@ -549,6 +674,7 @@ export function mountSocketServer(httpServer: HttpServer) {
         updatedAt: Date.now(),
         revision: (room.playback?.revision || 0) + 1,
         title: normalizeText(payload?.title, 160),
+        cover: normalizeMediaUrl(payload?.cover) || undefined,
       };
       await saveRoom(room);
       callback?.({ success: true, playback: room.playback });
@@ -560,7 +686,7 @@ export function mountSocketServer(httpServer: HttpServer) {
       const roomId = requireJoined(socket, callback);
       if (!roomId) return;
       const room = await loadRoom(roomId);
-      if (!room || room.ownerId !== session.profile.id || !room.playback) {
+      if (!room || !isRoomManager(room, session.profile.id) || !room.playback) {
         ackError(callback, '只有房主可以控制共同播放');
         return;
       }
@@ -589,7 +715,7 @@ export function mountSocketServer(httpServer: HttpServer) {
       const roomId = requireJoined(socket, callback);
       if (!roomId) return;
       const room = await loadRoom(roomId);
-      if (!room || room.ownerId !== session.profile.id || !room.playback) {
+      if (!room || !isRoomManager(room, session.profile.id) || !room.playback) {
         ackError(callback, '只有房主可以控制共同播放');
         return;
       }
@@ -621,6 +747,7 @@ export function mountSocketServer(httpServer: HttpServer) {
         updatedAt: Date.now(),
         revision: room.playback.revision + 1,
         title: normalizeText(payload.title, 160),
+        cover: normalizeMediaUrl(payload.cover) || undefined,
       };
       await saveRoom(room);
       callback?.({ success: true, playback: room.playback });
