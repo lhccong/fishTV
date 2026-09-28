@@ -98,7 +98,16 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, onClo
     };
     const report = () => {
       if (disposed || performance.now() < applyingUntil || !live.current.connected) return;
-      if (!live.current.owner) { sync(); return; }
+      if (!live.current.owner) {
+        // Non-owner: immediately correct any state mismatch
+        const state = live.current.playback;
+        if (state.playing && video.paused && !video.ended) {
+          void video.play().catch(() => {});
+        } else if (!state.playing && !video.paused) {
+          video.pause();
+        }
+        return;
+      }
       if (sending || video.readyState < 1) return;
       sending = true;
       void live.current.onClock(video.currentTime, !video.paused && !video.ended, live.current.playback.revision)
