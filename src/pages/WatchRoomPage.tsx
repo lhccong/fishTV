@@ -4,7 +4,7 @@ import { HiArrowLeft, HiChatAlt2, HiFilm, HiLogout, HiPlay, HiSearch, HiTrash, H
 import { useCurrentUser } from '../context/AccessGate';
 import { useRoomSocket } from '../hooks/useRoomSocket';
 import { VIDEO_SOURCES } from '../api/config';
-import { getVideoDetail, getVideoList } from '../api/video';
+import { findVideoByTitle, getVideoDetail, getVideoList } from '../api/video';
 import type { Video } from '../api/types';
 import { allEpisodes, isRoomMedia, roomEpisodes } from '../lib/roomVideo';
 import RoomVideoPlayer from '../components/RoomVideoPlayer';
@@ -13,6 +13,7 @@ import RoomSettings from '../components/RoomSettings';
 import RoomMembers from '../components/RoomMembers';
 import RoomChatComposer from '../components/RoomChatComposer';
 import ChatMessageText from '../components/ChatMessageText';
+import RoomVideoDetailModal from '../components/RoomVideoDetailModal';
 import '../watch-room.css';
 
 const categories = [{ id: 6, name: '电影', icon: HiFilm }, { id: 13, name: '电视剧', icon: HiDesktopComputer }, { id: 29, name: '动漫', icon: HiSparkles }, { id: 25, name: '综艺', icon: HiMicrophone }, { id: 36, name: '短剧', icon: HiVideoCamera }];
@@ -48,6 +49,7 @@ export default function WatchRoomPage() {
   const [picker, setPicker] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
   const [catalogError, setCatalogError] = useState('');
   const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [media, setMedia] = useState<{ key: string; url: string; title: string } | null>(null);
@@ -60,7 +62,17 @@ export default function WatchRoomPage() {
   const followChat = useRef(true);
   const mediaKey = playback ? `${playback.sourceId}:${playback.videoId}:${playback.episode}` : '';
   const selection = allEpisodes(selected || { vod_play_url: '' } as Video);
-  const playableSelection = selection.filter(item => isRoomMedia(item.url));
+
+  useEffect(() => {
+    const message = error || socketError;
+    if (!message) {
+      setToastMessage('');
+      return;
+    }
+    setToastMessage(message);
+    const timer = window.setTimeout(() => setToastMessage(''), 3000);
+    return () => window.clearTimeout(timer);
+  }, [error, socketError]);
 
   useEffect(() => { setActivePanel(null); }, [roomId, joined, owner]);
   useEffect(() => {
@@ -224,6 +236,7 @@ export default function WatchRoomPage() {
     if (container && followChat.current) container.scrollTop = container.scrollHeight;
   }, [messages.length]);
   const choose = async (video: Video) => {
+    setSelected(video);
     setBusy(true); setError('');
     try {
       const result = await getVideoDetail(String(video.vod_id), VIDEO_SOURCES[source].url);
@@ -238,6 +251,29 @@ export default function WatchRoomPage() {
       setSelected(detail); setSelectedSource(source); setEpisode(firstPlayable >= 0 ? firstPlayable + 1 : 1);
     } catch { setError('影片详情加载失败，请重试'); }
     finally { setBusy(false); }
+  };
+  const changeSelectedSource = async (nextSource: string) => {
+    if (!selected || busy || !VIDEO_SOURCES[nextSource] || nextSource === selectedSource) return;
+    setBusy(true); setError('');
+    try {
+      // 不同片源的 vod_id 通常不一致，切换线路必须按片名匹配，避免跳到另一部影片。
+      const title = selected.vod_name.trim();
+      const matched = await findVideoByTitle(title, VIDEO_SOURCES[nextSource].url);
+      if (!matched) throw new Error('目标片源没有同名影片');
+      const detail = {
+        ...matched,
+        vod_pic: matched.vod_pic || selected.vod_pic,
+      };
+      const episodes = allEpisodes(detail);
+      const firstPlayable = episodes.findIndex(item => isRoomMedia(item.url));
+      setSelected(detail);
+      setSelectedSource(nextSource);
+      setEpisode(firstPlayable >= 0 ? firstPlayable + 1 : 1);
+    } catch {
+      setError('当前渠道不可用，已保持原片源');
+    } finally {
+      setBusy(false);
+    }
   };
   const publish = async () => {
     if (!selected || busy || !selection[episode - 1] || !isRoomMedia(selection[episode - 1].url)) return;
@@ -273,7 +309,7 @@ export default function WatchRoomPage() {
         {joined ? <RoomMembers room={room} userId={user?.id} open={activePanel === 'members'} onOpenChange={open => setActivePanel(open ? 'members' : null)} /> : <span><HiUserGroup />0 人在线</span>}
       </nav>
     </header>
-    {(error || socketError) && <p className="watch-error" role="alert">{error || socketError}</p>}
+    {toastMessage && <p className="watch-error" role="alert">{toastMessage}</p>}
     {!joined ? <section className="watch-wait"><HiFilm /><h2>{roomRemoved ? '房间已移除' : passwordRequired ? '输入房间密码' : joinError ? '无法进入房间' : '正在加入房间'}</h2>
       {roomRemoved ? <><p role="alert">{joinFailure.error}</p><Link to="/rooms">返回放映室</Link></> : passwordRequired ? <form className="watch-password-form" onSubmit={async event => {
         event.preventDefault(); if (joiningWithPassword) return;
@@ -340,14 +376,6 @@ export default function WatchRoomPage() {
             <form className="watch-search" onSubmit={event => { event.preventDefault(); setKeyword(query.trim()); setPage(1); setCatalogAttempt(value => value + 1); }}>
               <HiSearch /><input aria-label="搜索影片" placeholder="搜索电影、电视剧、动漫..." maxLength={100} value={query} onChange={event => setQuery(event.target.value)} /><button type="submit">搜索</button>
             </form>
-            {selected && <div className="watch-selection">
-              <img src={selected.vod_pic} alt="" onError={event => { event.currentTarget.style.visibility = 'hidden'; }} />
-              <div><h3>{selected.vod_name}</h3><p>{selected.vod_year} · {selected.vod_area}</p>
-                {selection.length ? <label>集数<select aria-label="选择集数" value={episode} onChange={event => setEpisode(Number(event.target.value))}>{selection.map((item, index) => <option key={index} value={index + 1}>{item.name}{isRoomMedia(item.url) ? '' : '（暂不支持共同播放）'}</option>)}</select></label> : <p role="alert">该影片暂无可用集数，请切换视频源</p>}
-                {selection.length > 0 && playableSelection.length === 0 && <p role="alert">该影片的集数不是可同步的直链，请切换视频源</p>}
-                <button className="watch-primary" disabled={busy || !connected || !isRoomMedia(selection[episode - 1]?.url || '')} onClick={() => void publish()}><HiPlay />共同播放</button>
-              </div>
-            </div>}
             {searching ? <div className="watch-empty" role="status"><svg className="watch-spinner" width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeDasharray="80" strokeDashoffset="60" opacity="0.25"/><circle cx="20" cy="20" r="16" stroke="#38bdf8" strokeWidth="4" strokeLinecap="round" strokeDasharray="80" strokeDashoffset="60"><animateTransform attributeName="transform" type="rotate" from="0 20 20" to="360 20 20" dur="1s" repeatCount="indefinite"/></circle></svg><p style={{marginTop:'16px',fontSize:'14px',color:'#cbd5e1'}}>正在加载片库...</p></div> : catalogError ? <div className="watch-empty"><svg style={{fontSize:'48px',color:'#ef4444',marginBottom:'8px'}} viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg><p role="alert">{catalogError}</p><button onClick={() => setCatalogAttempt(value => value + 1)}>重试</button></div> : !results.length ? <div className="watch-empty"><HiFilm style={{fontSize:'56px',color:'#6b7280',marginBottom:'12px'}}/><p>暂无影片</p></div> :
               <div className={`watch-film-grid ${searching ? 'watch-searching' : ''}`}>{results.map(video => <button key={video.vod_id} className="watch-film" disabled={busy} onClick={() => void choose(video)}>
                 <div className="watch-poster"><HiFilm /><img src={video.vod_pic} alt="" loading="lazy" onError={event => { event.currentTarget.style.visibility = 'hidden'; }} /><span>{video.vod_year || video.type_name}</span></div>
@@ -379,5 +407,17 @@ export default function WatchRoomPage() {
             placeholder="聊聊这部影片..." onSent={() => { followChat.current = true; }} />
         </aside>
       </div>}
+    {selected && <RoomVideoDetailModal
+      video={selected}
+      source={selectedSource || source}
+      episode={episode}
+      busy={busy}
+      connected={connected}
+      notice={toastMessage}
+      onEpisodeChange={setEpisode}
+      onSourceChange={changeSelectedSource}
+      onPublish={() => void publish()}
+      onClose={() => { if (!busy) setSelected(null); }}
+    />}
   </main>;
 }

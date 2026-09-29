@@ -15,6 +15,8 @@ interface VideoDetailProps {
   currentEpisode?: number;
   currentSource: keyof typeof VIDEO_SOURCES;
   onSourceChange?: (source: keyof typeof VIDEO_SOURCES) => void;
+  sourceError?: string;
+  sourceSwitching?: boolean;
   // Add more props as needed
 }
 
@@ -31,6 +33,8 @@ const VideoDetail = ({
   currentEpisode = 1,
   currentSource,
   onSourceChange,
+  sourceError,
+  sourceSwitching = false,
 }: VideoDetailProps) => {
   // Generate episode numbers for the pagination
   const episodes = Array.from({ length: episodeCount }, (_, i) => i + 1);
@@ -107,12 +111,14 @@ const VideoDetail = ({
                     ? 'bg-primary text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
+                disabled={sourceSwitching || currentSource === key}
                 onClick={() => onSourceChange?.(key as keyof typeof VIDEO_SOURCES)}
               >
                 {source.name}
               </button>
             ))}
           </div>
+          {sourceError && <p className="mt-3 text-sm text-red-500" role="alert">{sourceError}</p>}
         </div>
 
         {/* Episodes grid */}

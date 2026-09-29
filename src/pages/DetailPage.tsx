@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import VideoDetail from '../components/VideoDetail';
 import VideoDetailSkeleton from '../components/VideoDetailSkeleton';
-import { getVideoDetail, searchVideo } from '../api/video';
+import { findVideoByTitle, getVideoDetail } from '../api/video';
 import { Video } from '../api/types';
 import { VIDEO_SOURCES } from '../api/config';
 
@@ -11,6 +11,8 @@ const DetailPage = () => {
   const { id, source } = useParams<{ id: string; source?: string }>();
   const [videoData, setVideoData] = useState<Video | null>(null);
   const [loading, setLoading] = useState(true);
+  const [switchingSource, setSwitchingSource] = useState(false);
+  const [sourceError, setSourceError] = useState('');
   const [selectedSource, setSelectedSource] = useState<keyof typeof VIDEO_SOURCES>(() => {
     if (source && source in VIDEO_SOURCES) {
       return source as keyof typeof VIDEO_SOURCES;
@@ -18,41 +20,44 @@ const DetailPage = () => {
     return 'feifan';
   });
 
-  const fetchVideoData = async (source: keyof typeof VIDEO_SOURCES) => {
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const response = await getVideoDetail(id, VIDEO_SOURCES[selectedSource].url);
+        if (!cancelled && response.list?.[0]) setVideoData(response.list[0]);
+      } catch (error) {
+        console.error('获取视频详情失败:', error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [id]);
+
+  const handleSourceChange = async (nextSource: keyof typeof VIDEO_SOURCES) => {
+    if (!videoData || nextSource === selectedSource || switchingSource) return;
+    setSwitchingSource(true);
+    setSourceError('');
     setLoading(true);
     try {
-      // 如果是初始加载，使用 ID 获取详情
-      if (id && !videoData) {
-        const response = await getVideoDetail(id, VIDEO_SOURCES[source].url);
-        if (response.list && response.list.length > 0) {
-          setVideoData(response.list[0]);
-        }
-      } else if (videoData?.vod_name) {
-        // 如果是切换数据源，使用标题搜索
-        const searchKeyword = videoData.vod_name.split(' ')[0].split('　')[0]; // 处理普通空格和全角空格
-        const response = await searchVideo(searchKeyword, VIDEO_SOURCES[source].url);
-        if (response.list && response.list.length > 0) {
-          setVideoData(response.list[0]);
-        }
-      }
+      const matched = await findVideoByTitle(videoData.vod_name, VIDEO_SOURCES[nextSource].url);
+      if (!matched) throw new Error('当前渠道不可用');
+      setVideoData({ ...matched, vod_pic: matched.vod_pic || videoData.vod_pic });
+      setSelectedSource(nextSource);
     } catch (error) {
-      console.error('获取视频详情失败:', error);
+      console.error('切换视频源失败:', error);
+      setSourceError('当前渠道不可用，已保持原片源');
     } finally {
       setLoading(false);
+      setSwitchingSource(false);
     }
   };
 
-  useEffect(() => {
-    if (id) {
-      fetchVideoData(selectedSource);
-    }
-  }, [id, selectedSource]);
-
-  const handleSourceChange = (source: keyof typeof VIDEO_SOURCES) => {
-    setSelectedSource(source);
-  };
-
-  if (loading) {
+  if (loading && !videoData) {
     return (
       <Layout>
         <VideoDetailSkeleton />
@@ -110,6 +115,8 @@ const DetailPage = () => {
         episodeNames={names}
         currentSource={selectedSource}
         onSourceChange={handleSourceChange}
+        sourceError={sourceError}
+        sourceSwitching={switchingSource}
       />
     </Layout>
   );
