@@ -21,7 +21,7 @@ export default function WatchRoomPage() {
   const { roomId = '' } = useParams();
   const navigate = useNavigate();
   const user = useCurrentUser();
-  const { room, playback, messages, liveMessages, connected, joinFailure, error: socketError, joinRoom, leaveRoom, dissolveRoom, setRoomPlayback, advanceRoomPlayback, setRoomPlayMode, setPlaybackClock, setPlaybackRate, sendChat } = useRoomSocket();
+  const { room, playback, messages, liveMessages, connected, clockReporter, getServerNow, joinFailure, error: socketError, joinRoom, leaveRoom, dissolveRoom, setRoomPlayback, advanceRoomPlayback, setRoomPlayMode, setPlaybackClock, setPlaybackRate, sendChat } = useRoomSocket();
   const joined = room?.id === roomId.toUpperCase();
   const owner = joined && (room.ownerId === user?.id || Boolean(user?.id && room.adminIds?.includes(user.id)));
   const [activePanel, setActivePanel] = useState<'invite' | 'settings' | 'members' | null>(null);
@@ -324,13 +324,15 @@ export default function WatchRoomPage() {
           </div>}
           {playback ? <>
             {media?.key === mediaKey ? <RoomVideoPlayer key={mediaKey} url={media.url} playback={playback} owner={owner} connected={connected}
+              clockReporter={clockReporter} getServerNow={getServerNow}
               canSetPlaybackRate={room.ownerId === user?.id} onPlaybackRateChange={setPlaybackRate}
               playMode={playMode} onPlayModeChange={setRoomPlayMode}
               messages={messages} liveMessages={liveMessages} userId={user?.id} sendChat={sendChat}
               onEnded={() => void playNextEpisode()}
-              onClock={async (position, playing, revision) => {
-                const result = await setPlaybackClock(position, playing, revision);
-                if (!result.success && result.code !== 'STALE_PLAYBACK') setError(result.error || '播放同步失败');
+              onClock={async (position, playing, revision, kind) => {
+                const result = await setPlaybackClock(position, playing, revision, kind);
+                if (!result.success && !['STALE_PLAYBACK', 'NOT_CLOCK_REPORTER', 'CLOCK_DRIFT'].includes(result.code || '')) setError(result.error || '播放同步失败');
+                return result;
               }} /> : <div className="watch-screen-empty"><HiFilm /><h2>{mediaError ? '暂时无法播放' : '正在加载影片'}</h2>{mediaError && <><p role="alert">{mediaError}</p><button onClick={() => setMediaAttempt(value => value + 1)}>重新加载</button></>}</div>}
           </> : !owner && <div className="watch-screen-empty watch-awaiting"><HiFilm /><h2>暂无播放</h2><p>等待房主选片</p><span className="watch-waiting-dots" aria-hidden="true">● ● ●</span></div>}
           {owner && (!playback || picker) && <section className="watch-picker">

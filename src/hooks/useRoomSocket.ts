@@ -2,6 +2,7 @@ import { createContext, createElement, useContext, useCallback, useEffect, useRe
 import { io, type Socket } from 'socket.io-client';
 import { useCurrentUser } from '../context/AccessGate';
 import { getClientNetworkInfo } from '../lib/clientNetworkInfo';
+import { createRoomClock } from '../lib/roomClock';
 
 export type RoomMember = {
   id: string;
@@ -50,6 +51,7 @@ export type RoomSummary = {
   playMode?: 'sequential' | 'single' | 'random';
 };
 type JoinResponse = { success: boolean; room?: RoomSummary; messages?: RoomChatMessage[]; error?: string; code?: string };
+export type RoomClockResult = { success: boolean; playback?: RoomPlayback; error?: string; code?: string };
 
 const RoomContext = createContext<ReturnType<typeof useRoomConnection> | null>(null);
 
@@ -71,6 +73,11 @@ function useRoomConnection() {
   const retryTimer = useRef<number | null>(null);
   const retryCount = useRef(0);
   const socketRef = useRef<Socket | null>(null);
+  const clock = useRef(createRoomClock());
+  const clockSyncPending = useRef(false);
+  const clockGeneration = useRef(0);
+  const [clockReporter, setClockReporter] = useState(false);
+  const getServerNow = useCallback(() => clock.current.now(), []);
   const [connected, setConnected] = useState(false);
   const [room, setRoom] = useState<RoomSummary | null>(null);
   const [messages, setMessages] = useState<RoomChatMessage[]>([]);
@@ -92,11 +99,32 @@ function useRoomConnection() {
     else socket.timeout(8000).emit(event, payload, callback);
   }), []);
 
+  const syncRoomClock = useCallback(async () => {
+    if (clockSyncPending.current || !socketRef.current?.connected || !activeRoom.current) return;
+    clockSyncPending.current = true;
+    const generation = clockGeneration.current;
+    const roomId = activeRoom.current;
+    const startedAt = performance.now();
+    try {
+      const result = await emit<{ success: boolean; serverReceivedAt: number; serverSentAt: number; reporter: boolean }>('sync_room_clock');
+      if (generation !== clockGeneration.current || roomId !== activeRoom.current) return;
+      setClockReporter(result.success && result.reporter === true);
+      if (result.success) clock.current.sample(startedAt, performance.now(), result.serverReceivedAt, result.serverSentAt);
+    } finally {
+      if (generation === clockGeneration.current) clockSyncPending.current = false;
+    }
+  }, [emit]);
+
   const applyJoinedRoom = useCallback((response: { success: boolean; room?: RoomSummary; messages?: RoomChatMessage[]; error?: string }) => {
     if (!response.success || !response.room) return;
     if (retryTimer.current !== null) {
       window.clearTimeout(retryTimer.current);
       retryTimer.current = null;
+    }
+    if (activeRoom.current !== response.room.id) {
+      clockGeneration.current++;
+      clockSyncPending.current = false;
+      setClockReporter(false);
     }
     activeRoom.current = response.room.id;
     setRoom(response.room);
@@ -133,6 +161,7 @@ function useRoomConnection() {
     const response = await emit<JoinResponse>('join_room', {
       roomId: normalizedRoomId,
       playbackRateSupported: true,
+      playbackClockSupported: true,
       ...(password !== undefined ? { password } : {}),
       ...(networkInfo.location ? { clientLocation: networkInfo.location } : {}),
     });
@@ -140,6 +169,7 @@ function useRoomConnection() {
     if (desiredRoom.current !== normalizedRoomId) return response;
     if (response.success && response.room) {
       applyJoinedRoom(response);
+      void syncRoomClock();
     } else if (response.code === 'ROOM_PASSWORD_REQUIRED' || response.code === 'ROOM_PASSWORD_INVALID' || response.code === 'ROOM_NOT_FOUND') {
       if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
       retryTimer.current = null;
@@ -159,7 +189,7 @@ function useRoomConnection() {
       scheduleRoomRetry(normalizedRoomId, () => void joinRoom(normalizedRoomId));
     }
     return response;
-  }, [applyJoinedRoom, emit, scheduleRoomRetry]);
+  }, [applyJoinedRoom, emit, scheduleRoomRetry, syncRoomClock]);
 
   const leaveRoom = useCallback(async () => {
     desiredRoom.current = null;
@@ -171,6 +201,7 @@ function useRoomConnection() {
     const response = await emit<{ success: boolean; error?: string }>('leave_room');
     if (response.success) {
       activeRoom.current = null;
+      setClockReporter(false);
       setRoom(null);
       setPlayback(null);
       setMessages([]);
@@ -230,10 +261,10 @@ function useRoomConnection() {
     return result;
   }, [emit]);
 
-  const setPlaybackClock = useCallback(async (positionSeconds: number, playing: boolean, revision?: number) => {
-    const result = await emit<{ success: boolean; playback?: RoomPlayback; error?: string; code?: string }>(
+  const setPlaybackClock = useCallback(async (positionSeconds: number, playing: boolean, revision?: number, kind: 'control' | 'heartbeat' = 'control') => {
+    const result = await emit<RoomClockResult>(
       'set_playback_clock',
-      { positionSeconds, playing, revision },
+      { positionSeconds, playing, revision, kind },
     );
     if (result.playback) {
       const next = result.playback;
@@ -277,11 +308,18 @@ function useRoomConnection() {
     });
     socketRef.current = socket;
     socket.on('connect', () => {
+      clockGeneration.current++;
+      clockSyncPending.current = false;
+      clock.current.reset();
+      setClockReporter(false);
       setConnected(true);
       setError('');
       if (desiredRoom.current) void joinRoom(desiredRoom.current);
     });
     socket.on('disconnect', () => {
+      clockGeneration.current++;
+      clockSyncPending.current = false;
+      setClockReporter(false);
       setConnected(false);
       setLiveMessages([]);
       if (desiredRoom.current) setError('房间连接已断开，正在自动重连...');
@@ -300,6 +338,7 @@ function useRoomConnection() {
       if (event.code === 'ROOM_KICKED') {
         desiredRoom.current = null;
         activeRoom.current = null;
+        setClockReporter(false);
         if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
         retryTimer.current = null;
         retryCount.current = 0;
@@ -329,6 +368,7 @@ function useRoomConnection() {
       if (event.roomId !== activeRoom.current && event.roomId !== desiredRoom.current) return;
       desiredRoom.current = null;
       activeRoom.current = null;
+      setClockReporter(false);
       if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
       retryTimer.current = null;
       retryCount.current = 0;
@@ -346,17 +386,28 @@ function useRoomConnection() {
       setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message].slice(-100));
       setLiveMessages(current => current.some(item => item.id === message.id) ? current : [...current, message].slice(-40));
     });
+    const clockTimer = window.setInterval(() => void syncRoomClock(), 10000);
+    const resyncClock = () => {
+      if (document.visibilityState === 'visible') void syncRoomClock();
+    };
+    document.addEventListener('visibilitychange', resyncClock);
     return () => {
+      window.clearInterval(clockTimer);
+      document.removeEventListener('visibilitychange', resyncClock);
+      clockGeneration.current++;
+      clockSyncPending.current = false;
       desiredRoom.current = null;
       if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
       retryTimer.current = null;
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [joinRoom, user?.id]);
+  }, [joinRoom, syncRoomClock, user?.id]);
 
   return {
     connected,
+    clockReporter,
+    getServerNow,
     error,
     joinFailure,
     room,

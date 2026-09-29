@@ -72,7 +72,14 @@ type RoomState = RoomRetention & {
   playMode?: 'sequential' | 'single' | 'random';
 };
 
-type AuthenticatedSocket = Socket & { data: { session: UserSession; roomId?: string; playbackRateSupported?: boolean } };
+type AuthenticatedSocket = Socket & { data: { session: UserSession; roomId?: string; playbackRateSupported?: boolean; playbackClockSupported?: boolean } };
+
+function clockReporter(io: Server, room: RoomState) {
+  const candidates = [...io.sockets.sockets.values()].filter(socket =>
+    socket.connected && socket.rooms.has(room.id) && socket.data.playbackClockSupported === true &&
+    isRoomManager(room, socket.data.session.profile.id));
+  return candidates.find(socket => socket.data.session.profile.id === room.ownerId) || candidates[0];
+}
 
 function normalizeRoomId(value: unknown) {
   const roomId = String(value || '').trim().toUpperCase();
@@ -308,8 +315,13 @@ export function mountSocketServer(httpServer: HttpServer) {
     maxHttpBufferSize: 64 * 1024,
   });
   liveIo = io;
+  const clockStats = { calibrated: 0, heartbeats: 0, rejectedReporter: 0, rejectedDrift: 0 };
   let sweeping = false;
   const sweep = setInterval(() => {
+    if (Object.values(clockStats).some(Boolean)) {
+      console.info('[rooms] clock_sync', JSON.stringify(clockStats));
+      clockStats.calibrated = clockStats.heartbeats = clockStats.rejectedReporter = clockStats.rejectedDrift = 0;
+    }
     if (sweeping) return;
     sweeping = true;
     void adminRoomList().catch(() => console.warn('[rooms] cleanup_failed')).finally(() => { sweeping = false; });
@@ -350,8 +362,12 @@ export function mountSocketServer(httpServer: HttpServer) {
     let windowStart = Date.now();
     const handle = (event: string, handler: (payload: any, callback: (response: any) => void) => Promise<void>) => {
       socket.on(event, (...args: unknown[]) => {
+        const receivedAt = Date.now();
         const last = args[args.length - 1];
-        const reply = typeof last === 'function' ? last as (response: unknown) => void : () => {};
+        const ack = typeof last === 'function' ? last as (response: unknown) => void : () => {};
+        const reply = (response: any) => ack(event === 'sync_room_clock'
+          ? { ...response, serverReceivedAt: receivedAt, serverSentAt: Date.now() }
+          : response);
         const payload = typeof args[0] === 'function' ? undefined : args[0];
         if (Date.now() - windowStart > 60000) { eventCount = 0; windowStart = Date.now(); }
         if (++eventCount > 180 || queued >= 12) {
@@ -496,6 +512,7 @@ export function mountSocketServer(httpServer: HttpServer) {
         await socket.join(roomId);
         socket.data.roomId = roomId;
         socket.data.playbackRateSupported = payload?.playbackRateSupported === true;
+        socket.data.playbackClockSupported = payload?.playbackClockSupported === true;
         callback?.({ success: true, room: publicRoom(room), messages: room.chat.slice(-50) });
         broadcastRoom(io, room);
       } catch {
@@ -691,6 +708,19 @@ export function mountSocketServer(httpServer: HttpServer) {
       broadcastRoom(io, room);
     });
 
+    handle('sync_room_clock', async (payload, callback) => {
+      if (payload !== undefined) {
+        ackError(callback, '时钟校准参数无效', 'INVALID_CLOCK_SYNC');
+        return;
+      }
+      const roomId = requireJoined(socket, callback);
+      if (!roomId) return;
+      const room = await loadRoom(roomId);
+      if (!room) { ackError(callback, '房间不存在', 'ROOM_NOT_FOUND'); return; }
+      clockStats.calibrated++;
+      callback({ success: true, reporter: clockReporter(io, room)?.id === socket.id });
+    });
+
     handle('set_playback_clock', async (payload, callback) => {
       const roomId = requireJoined(socket, callback);
       if (!roomId) return;
@@ -703,9 +733,43 @@ export function mountSocketServer(httpServer: HttpServer) {
         ackError(callback, '播放进度无效');
         return;
       }
+      if (payload.kind !== undefined && payload.kind !== 'control' && payload.kind !== 'heartbeat') {
+        ackError(callback, '播放同步类型无效', 'INVALID_PLAYBACK_CLOCK');
+        return;
+      }
+      if (payload.kind !== undefined && (payload.positionSeconds < 0 || payload.positionSeconds > 86400 ||
+        !Number.isInteger(payload.revision))) {
+        ackError(callback, '播放同步参数无效', 'INVALID_PLAYBACK_CLOCK');
+        return;
+      }
+      const reporter = clockReporter(io, room);
+      // Legacy clients cannot distinguish automatic heartbeats from user controls.
+      if (reporter && socket.data.playbackClockSupported !== true) {
+        ackError(callback, '房间同步已升级，请刷新页面后控制播放', 'CLIENT_UPDATE_REQUIRED');
+        return;
+      }
+      if (payload.kind === 'heartbeat' && reporter?.id !== socket.id) {
+        clockStats.rejectedReporter++;
+        callback({ success: false, code: 'NOT_CLOCK_REPORTER', error: '当前连接不负责周期同步', playback: room.playback });
+        return;
+      }
+      if (payload.kind === 'heartbeat' && payload.playing !== room.playback.playing) {
+        callback({ success: false, code: 'STALE_PLAYBACK', error: '播放状态已更新', playback: room.playback });
+        return;
+      }
       if (payload?.revision !== undefined && payload.revision !== room.playback.revision) {
         callback({ success: false, code: 'STALE_PLAYBACK', error: '播放状态已更新', playback: room.playback });
         return;
+      }
+      if (payload.kind === 'heartbeat') {
+        const expected = room.playback.positionSeconds + (room.playback.playing
+          ? Math.max(0, Date.now() - room.playback.updatedAt) / 1000 * normalizePlaybackRate(room.playback.playbackRate) : 0);
+        // Buffering in the reporting browser must not rewind every other member.
+        if (Math.abs(payload.positionSeconds - expected) > 2) {
+          clockStats.rejectedDrift++;
+          callback({ success: false, code: 'CLOCK_DRIFT', error: '本机进度需要重新同步', playback: room.playback });
+          return;
+        }
       }
       const positionSeconds = Math.max(0, Math.min(Number(payload?.positionSeconds) || 0, 24 * 60 * 60));
       room.playback = {
@@ -716,6 +780,7 @@ export function mountSocketServer(httpServer: HttpServer) {
         revision: room.playback.revision + 1,
       };
       await saveRoom(room);
+      if (payload.kind === 'heartbeat') clockStats.heartbeats++;
       callback?.({ success: true, playback: room.playback });
       io.to(roomId).emit('playback_state', room.playback);
     });
