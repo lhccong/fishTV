@@ -51,6 +51,15 @@ type PlaybackState = {
   cover?: string;
 };
 
+type DanmakuEffect = 
+  | 'normal'      // 普通（默认）
+  | 'rainbow'     // 彩虹渐变
+  | 'glow'        // 发光效果
+  | 'shake'       // 抖动效果
+  | 'wave'        // 波浪效果
+  | 'zoom'        // 缩放动画
+  | 'slide';      // 滑动进入
+
 type ChatMessage = {
   id: string;
   userId: string;
@@ -58,6 +67,10 @@ type ChatMessage = {
   avatarUrl?: string;
   text: string;
   createdAt: number;
+  color?: string;           // 弹幕颜色
+  effect?: DanmakuEffect;   // 弹幕特效
+  isPermanentVip?: boolean; // VIP 标识
+  titleName?: string;       // 称号
 };
 
 type RoomState = RoomRetention & {
@@ -276,6 +289,17 @@ export function kickConnectionsMatchingBan(ban: SiteBan) {
     }
   }
   return kicked;
+}
+
+// 辅助函数：验证弹幕颜色
+function isValidColor(color: any): boolean {
+  return typeof color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(color);
+}
+
+// 辅助函数：验证弹幕特效
+function isValidEffect(effect: any): boolean {
+  const validEffects: DanmakuEffect[] = ['normal', 'rainbow', 'glow', 'shake', 'wave', 'zoom', 'slide'];
+  return validEffects.includes(effect);
 }
 
 function grantKey(socket: AuthenticatedSocket, roomId: string) {
@@ -883,6 +907,12 @@ export function mountSocketServer(httpServer: HttpServer) {
         ackError(callback, '房间不存在');
         return;
       }
+      
+      // VIP 权限验证：非 VIP 用户强制使用默认样式
+      const isVip = session.profile.isPermanentVip || false;
+      const color = isVip && isValidColor(payload?.color) ? payload.color : '#FFFFFF';
+      const effect = isVip && isValidEffect(payload?.effect) ? payload.effect : 'normal';
+      
       const message: ChatMessage = {
         id: randomBytes(12).toString('base64url'),
         userId: session.profile.id,
@@ -890,6 +920,10 @@ export function mountSocketServer(httpServer: HttpServer) {
         ...(session.profile.avatarUrl ? { avatarUrl: session.profile.avatarUrl } : {}),
         text,
         createdAt: Date.now(),
+        color,
+        effect,
+        isPermanentVip: isVip,
+        ...(session.profile.currentTitleName ? { titleName: session.profile.currentTitleName } : {}),
       };
       room.chat = [...room.chat, message].slice(-MAX_CHAT_MESSAGES);
       await saveRoom(room);

@@ -3,11 +3,11 @@ import type { RoomChatMessage } from '../hooks/useRoomSocket';
 import { clipChatText } from '../lib/qqFace';
 import ChatMessageText from './ChatMessageText';
 
-const DURATION = 8000;
+const DURATION = 12000;
 type Bullet = { message: RoomChatMessage; lane: number; expires: number };
 
-export default function RoomDanmaku({ events, enabled, userId }: {
-  events: RoomChatMessage[]; enabled: boolean; userId?: string;
+export default function RoomDanmaku({ events, enabled, userId, fontSize = 14, opacity = 1, speed = 12 }: {
+  events: RoomChatMessage[]; enabled: boolean; userId?: string; fontSize?: number; opacity?: number; speed?: number;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const seen = useRef(new Set(events.map(message => message.id)));
@@ -57,12 +57,25 @@ export default function RoomDanmaku({ events, enabled, userId }: {
   }, [enabled, size.width, size.lanes]);
 
   return <div ref={container} className="watch-danmaku" aria-hidden="true"
-    style={{ '--danmaku-travel': `${size.width}px`, '--danmaku-duration': `${DURATION}ms` } as CSSProperties}>
+    style={{ '--danmaku-travel': `${size.width}px`, '--danmaku-duration': `${DURATION * 12 / speed}ms` } as CSSProperties}>
     {bullets.map(({ message, lane }) => {
       const text = clipChatText(message.text.replace(/\s+/g, ' '), 100);
-      return <span key={message.id} className={`watch-bullet ${message.userId === userId ? 'watch-bullet-self' : ''}`}
-        style={{ top: `${lane * 38}px` }}>
-        {Array.from(message.username).slice(0, 16).join('')}：<ChatMessageText text={text} />
+      const effectClass = message.effect && message.effect !== 'normal' ? `effect-${message.effect}` : '';
+      // 外层负责水平飞行（animation: watch-bullet-flight，作用于 transform）。
+      // 内层负责特效动画（rainbow/glow/shake/wave/zoom），也作用于 transform。
+      // 两层 transform 互不干扰，特效不会让弹幕卡住，颜色也不会被覆盖。
+      return <span
+        key={message.id}
+        className={`watch-bullet ${message.userId === userId ? 'watch-bullet-self' : ''}`}
+        style={{ top: `${lane * 38}px` }}
+      >
+        <span
+          className={`watch-bullet-inner ${effectClass}`}
+          style={{ color: message.color || undefined, fontSize: `${fontSize}px`, opacity }}
+        >
+          {message.titleName && <span className="watch-title-inline">【{message.titleName}】</span>}
+          {Array.from(message.username).slice(0, 16).join('')}：<ChatMessageText text={text} />
+        </span>
       </span>;
     })}
   </div>;

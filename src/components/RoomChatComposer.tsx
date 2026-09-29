@@ -4,17 +4,24 @@ import { HiOutlineEmojiHappy, HiPaperAirplane, HiX } from 'react-icons/hi';
 import { QQ_FACES, chatFragment, qqFaceToken, readChatEditor } from '../lib/qqFace';
 import { QQFaceImage } from './ChatMessageText';
 import Tooltip from './Tooltip';
+import { useCurrentUser } from '../context/AccessGate';
+import type { DanmakuEffect } from '../hooks/useRoomSocket';
 
 type Props = {
   connected: boolean;
-  sendChat: (text: string) => Promise<{ success: boolean; error?: string }>;
+  sendChat: (text: string, color?: string, effect?: DanmakuEffect) => Promise<{ success: boolean; error?: string }>;
   label: string;
   placeholder: string;
   compact?: boolean;
   onSent?: () => void;
+  defaultColor?: string;
+  defaultEffect?: DanmakuEffect;
 };
 
-export default function RoomChatComposer({ connected, sendChat, label, placeholder, compact = false, onSent }: Props) {
+export default function RoomChatComposer({ connected, sendChat, label, placeholder, compact = false, onSent, defaultColor, defaultEffect }: Props) {
+  const user = useCurrentUser();
+  const isVip = user?.isPermanentVip || false;
+
   const editor = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -29,8 +36,19 @@ export default function RoomChatComposer({ connected, sendChat, label, placehold
   const [open, setOpen] = useState(false);
   const [grid, setGrid] = useState<HTMLDivElement | null>(null);
   const [position, setPosition] = useState({ left: 8, top: 8, width: 280, height: 280 });
+  const [selectedColor, setSelectedColor] = useState(defaultColor || '#FFFFFF');
+  const [selectedEffect, setSelectedEffect] = useState<DanmakuEffect>(defaultEffect || 'normal');
   const id = useId();
   const disabled = !connected || busy;
+
+  // 同步外部传入的默认颜色和特效
+  useEffect(() => {
+    if (defaultColor) setSelectedColor(defaultColor);
+  }, [defaultColor]);
+
+  useEffect(() => {
+    if (defaultEffect) setSelectedEffect(defaultEffect);
+  }, [defaultEffect]);
 
   const rememberSelection = () => {
     const current = window.getSelection();
@@ -84,7 +102,7 @@ export default function RoomChatComposer({ connected, sendChat, label, placehold
     if (text.length > 500) { setError('消息最多 500 字（包含表情占位）'); return; }
     inFlight.current = true; setBusy(true); setOpen(false); setError('');
     try {
-      const result = await sendChat(text);
+      const result = await sendChat(text, isVip ? selectedColor : undefined, isVip ? selectedEffect : undefined);
       if (result.success) {
         editor.current?.replaceChildren();
         selection.current = null; lastValid.current = ''; setDraft(''); onSent?.();

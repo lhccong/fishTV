@@ -203,7 +203,7 @@ export default function AdminPage() {
         <label>Client ID<input required maxLength={256} autoComplete="off" value={config?.clientId || ''} onChange={e => setConfig(config && { ...config, clientId: e.target.value })} /></label>
         <label>Client Secret{config?.clientSecretConfigured ? '（已配置，留空不变）' : ''}<input required={!config?.clientSecretConfigured} type="password" autoComplete="new-password" maxLength={2048} value={secret} onChange={e => setSecret(e.target.value)} /></label>
       </div>
-      <label>OAuth 回调地址<output>{config?.siteOrigin.replace(/\/+$/, '')}/api/auth/moyu/callback</output></label>
+      <p className="account-static">OAuth 回调地址：<code>{config?.siteOrigin.replace(/\/+$/, '')}/api/auth/moyu/callback</code></p>
       <label>当前管理员密码<input required type="password" autoComplete="current-password" maxLength={64} value={configPassword} onChange={e => setConfigPassword(e.target.value)} /></label>
       <div className="account-actions"><button><HiSave />{busy === 'config' ? '保存中...' : '保存配置'}</button></div>
     </fieldset></form>}

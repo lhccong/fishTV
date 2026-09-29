@@ -28,6 +28,14 @@ export type RoomPlayback = {
   cover?: string;
 };
 
+export type DanmakuEffect = 
+  | 'normal'      // 普通（默认）
+  | 'rainbow'     // 彩虹渐变
+  | 'glow'        // 发光效果
+  | 'shake'       // 抖动效果
+  | 'wave'        // 波浪效果
+  | 'zoom';       // 缩放动画
+
 export type RoomChatMessage = {
   id: string;
   userId: string;
@@ -35,6 +43,11 @@ export type RoomChatMessage = {
   avatarUrl?: string;
   text: string;
   createdAt: number;
+  // 新增弹幕样式字段
+  color?: string;           // 弹幕颜色（十六进制，如 #FF0000）
+  effect?: DanmakuEffect;   // 弹幕特效
+  isPermanentVip?: boolean; // VIP 标识（用于显示 VIP 徽章）
+  titleName?: string;       // 称号（用于显示）
 };
 
 export type RoomSummary = {
@@ -273,8 +286,8 @@ function useRoomConnection() {
     return result;
   }, [emit]);
 
-  const sendChat = useCallback((text: string) => (
-    emit<{ success: boolean; message?: RoomChatMessage; error?: string }>('send_chat', { text })
+  const sendChat = useCallback((text: string, color?: string, effect?: DanmakuEffect) => (
+    emit<{ success: boolean; message?: RoomChatMessage; error?: string }>('send_chat', { text, color, effect })
   ), [emit]);
 
   const setPlaybackRate = useCallback(async (playbackRate: number, positionSeconds: number, revision: number) => {

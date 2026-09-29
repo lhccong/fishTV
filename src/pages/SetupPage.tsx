@@ -73,7 +73,7 @@ export default function SetupPage({ onComplete }: { onComplete: () => void }) {
                 <label>Client ID<input required autoComplete="off" maxLength={256} {...field('clientId')} /></label>
                 <label>Client Secret<input required type="password" autoComplete="off" maxLength={2048} {...field('clientSecret')} /></label>
               </div>
-              <label>OAuth 回调地址<output>{form.siteOrigin.replace(/\/+$/, '')}/api/auth/moyu/callback</output></label>
+              <p className="account-static">OAuth 回调地址：<code>{form.siteOrigin.replace(/\/+$/, '')}/api/auth/moyu/callback</code></p>
             </section>
             <section className="account-section">
               <h2>管理员账号</h2>

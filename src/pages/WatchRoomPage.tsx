@@ -3,10 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { HiArrowLeft, HiChatAlt2, HiFilm, HiLogout, HiPlay, HiSearch, HiTrash, HiUserCircle, HiUserGroup, HiDesktopComputer, HiSparkles, HiMicrophone, HiVideoCamera, HiServer } from 'react-icons/hi';
 import { useCurrentUser } from '../context/AccessGate';
 import { useRoomSocket } from '../hooks/useRoomSocket';
+import type { DanmakuEffect } from '../hooks/useRoomSocket';
+import { useTheme } from '../context/ThemeContext';
 import { VIDEO_SOURCES } from '../api/config';
 import { findVideoByTitle, getVideoDetail, getVideoList } from '../api/video';
 import type { Video } from '../api/types';
 import { allEpisodes, isRoomMedia, roomEpisodes } from '../lib/roomVideo';
+import { resolveChatMessageStyle } from '../lib/chatColor';
 import RoomVideoPlayer from '../components/RoomVideoPlayer';
 import RoomInvite from '../components/RoomInvite';
 import RoomSettings from '../components/RoomSettings';
@@ -22,6 +25,7 @@ export default function WatchRoomPage() {
   const { roomId = '' } = useParams();
   const navigate = useNavigate();
   const user = useCurrentUser();
+  const { isDarkMode } = useTheme();
   const { room, playback, messages, liveMessages, connected, clockReporter, getServerNow, joinFailure, error: socketError, joinRoom, leaveRoom, dissolveRoom, setRoomPlayback, advanceRoomPlayback, setRoomPlayMode, setPlaybackClock, setPlaybackRate, sendChat } = useRoomSocket();
   const joined = room?.id === roomId.toUpperCase();
   const owner = joined && (room.ownerId === user?.id || Boolean(user?.id && room.adminIds?.includes(user.id)));
@@ -57,6 +61,63 @@ export default function WatchRoomPage() {
   const [mediaError, setMediaError] = useState('');
   const [mediaAttempt, setMediaAttempt] = useState(0);
   const [playModeSaving, setPlayModeSaving] = useState(false);
+  const [danmakuColor, setDanmakuColor] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('watch-room:danmaku-color');
+      return /^#[0-9a-fA-F]{6}$/.test(stored || '') ? stored as string : '#FFFFFF';
+    } catch { return '#FFFFFF'; }
+  });
+  const [danmakuEffect, setDanmakuEffect] = useState<DanmakuEffect>(() => {
+    try {
+      const stored = localStorage.getItem('watch-room:danmaku-effect') as DanmakuEffect | null;
+      return stored && ['normal', 'rainbow', 'glow', 'shake', 'wave', 'zoom'].includes(stored) ? stored : 'normal';
+    } catch { return 'normal'; }
+  });
+  const [danmakuFontSize, setDanmakuFontSize] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('watch-room:danmaku-font-size');
+      const size = parseInt(stored || '14');
+      return [12, 14, 16, 18].includes(size) ? size : 14;
+    } catch { return 14; }
+  });
+  const [danmakuOpacity, setDanmakuOpacity] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('watch-room:danmaku-opacity');
+      const opacity = parseFloat(stored || '1');
+      return opacity >= 0.1 && opacity <= 1 ? opacity : 1;
+    } catch { return 1; }
+  });
+  const [danmakuSpeed, setDanmakuSpeed] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('watch-room:danmaku-speed');
+      const speed = parseInt(stored || '12');
+      return speed >= 8 && speed <= 20 ? speed : 12;
+    } catch { return 12; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('watch-room:danmaku-color', danmakuColor); } catch {}
+  }, [danmakuColor]);
+  useEffect(() => {
+    try { localStorage.setItem('watch-room:danmaku-effect', danmakuEffect); } catch {}
+  }, [danmakuEffect]);
+  useEffect(() => {
+    try { localStorage.setItem('watch-room:danmaku-font-size', danmakuFontSize.toString()); } catch {}
+  }, [danmakuFontSize]);
+  useEffect(() => {
+    try { localStorage.setItem('watch-room:danmaku-opacity', danmakuOpacity.toString()); } catch {}
+  }, [danmakuOpacity]);
+  useEffect(() => {
+    try { localStorage.setItem('watch-room:danmaku-speed', danmakuSpeed.toString()); } catch {}
+  }, [danmakuSpeed]);
+  useEffect(() => {
+    try { localStorage.setItem('watch-room:danmaku-font-size', String(danmakuFontSize)); } catch {}
+  }, [danmakuFontSize]);
+  useEffect(() => {
+    try { localStorage.setItem('watch-room:danmaku-opacity', String(danmakuOpacity)); } catch {}
+  }, [danmakuOpacity]);
+  useEffect(() => {
+    try { localStorage.setItem('watch-room:danmaku-speed', String(danmakuSpeed)); } catch {}
+  }, [danmakuSpeed]);
   const autoAdvance = useRef(false);
   const chatScroll = useRef<HTMLDivElement>(null);
   const followChat = useRef(true);
@@ -295,8 +356,8 @@ export default function WatchRoomPage() {
         <div><h1>{joined ? room.name : '观影房间'}</h1><p>房间号 {roomId.toUpperCase()} <span className={connected ? 'watch-online' : ''}>{connected ? '已连接' : '连接中'}</span></p></div>
       </div>
       <nav ref={actions} className="watch-actions">
-        {joined && <RoomInvite key={room.id} roomId={room.id} open={activePanel === 'invite'} onOpenChange={open => setActivePanel(open ? 'invite' : null)} />}
-        {owner && <RoomSettings key={room.id} open={activePanel === 'settings'} onOpenChange={open => setActivePanel(open ? 'settings' : null)} />}
+        {joined && <RoomInvite roomId={room.id} open={activePanel === 'invite'} onOpenChange={open => setActivePanel(open ? 'invite' : null)} />}
+        {owner && <RoomSettings open={activePanel === 'settings'} onOpenChange={open => setActivePanel(open ? 'settings' : null)} />}
         {owner && <button className="watch-danger-action" disabled={!connected} onClick={async () => {
           if (!window.confirm('解散后房间、播放记录和聊天记录都会被删除，在线成员也会被移出。确定解散房间吗？')) return;
           const result = await dissolveRoom();
@@ -364,6 +425,11 @@ export default function WatchRoomPage() {
               canSetPlaybackRate={room.ownerId === user?.id} onPlaybackRateChange={setPlaybackRate}
               playMode={playMode} onPlayModeChange={setRoomPlayMode}
               messages={messages} liveMessages={liveMessages} userId={user?.id} sendChat={sendChat}
+              danmakuColor={danmakuColor} onDanmakuColorChange={setDanmakuColor}
+              danmakuEffect={danmakuEffect} onDanmakuEffectChange={setDanmakuEffect}
+              danmakuFontSize={danmakuFontSize} onDanmakuFontSizeChange={setDanmakuFontSize}
+              danmakuOpacity={danmakuOpacity} onDanmakuOpacityChange={setDanmakuOpacity}
+              danmakuSpeed={danmakuSpeed} onDanmakuSpeedChange={setDanmakuSpeed}
               onEnded={() => void playNextEpisode()}
               onClock={async (position, playing, revision, kind) => {
                 const result = await setPlaybackClock(position, playing, revision, kind);
@@ -394,17 +460,25 @@ export default function WatchRoomPage() {
             followChat.current = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
           }}>
             {messages.length === 0 && <div className="watch-chat-empty"><HiChatAlt2 /><p>暂无消息</p></div>}
-            {messages.map(message => <article className={`watch-message ${message.userId === user?.id ? 'watch-message-self' : ''}`} key={message.id}>
-              {message.avatarUrl ? <img src={message.avatarUrl} alt="" referrerPolicy="no-referrer" /> : <HiUserCircle />}
-              <div className="watch-message-content">
-                <header><strong>{message.username}</strong></header>
-                <p><ChatMessageText text={message.text} /></p>
-                <time dateTime={new Date(message.createdAt).toISOString()}>{new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>
-              </div>
-            </article>)}
+            {messages.map(message => {
+              // 仅 VIP 用户选中的颜色才会应用到消息文本,普通用户的 color 服务端默认为白色,在亮色主题下不可见。
+              const vipStyle = resolveChatMessageStyle(message, isDarkMode);
+              const titleStyle = vipStyle
+                ? { background: `${message.color}26`, borderColor: `${message.color}66`, color: vipStyle.textColor }
+                : undefined;
+              return <article className={`watch-message ${message.userId === user?.id ? 'watch-message-self' : ''}`} key={message.id}>
+                {message.avatarUrl ? <img src={message.avatarUrl} alt="" referrerPolicy="no-referrer" /> : <HiUserCircle />}
+                <div className="watch-message-content">
+                  <header><strong>{message.username}</strong>{message.titleName && <span className="watch-user-title" title={`称号：${message.titleName}`} style={titleStyle}>【{message.titleName}】</span>}</header>
+                  <p style={vipStyle ? vipStyle.style : { color: isDarkMode ? '#eceef3' : '#111827' }}><ChatMessageText text={message.text} /></p>
+                  <time dateTime={new Date(message.createdAt).toISOString()}>{new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>
+                </div>
+              </article>;
+            })}
           </div>
           <RoomChatComposer connected={connected} sendChat={sendChat} label="聊天内容"
-            placeholder="聊聊这部影片..." onSent={() => { followChat.current = true; }} />
+            placeholder="聊聊这部影片..." onSent={() => { followChat.current = true; }}
+            defaultColor={danmakuColor} defaultEffect={danmakuEffect} />
         </aside>
       </div>}
     {selected && <RoomVideoDetailModal

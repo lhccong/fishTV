@@ -6,7 +6,14 @@ import { AccountError, accountRequest } from '../api/account';
 import { setVideoSources } from '../api/config';
 import '../account.css';
 
-type User = { id: string; username: string; avatarUrl?: string };
+type User = { 
+  id: string; 
+  username: string; 
+  avatarUrl?: string;
+  isPermanentVip?: boolean;
+  donationAmount?: number;
+  currentTitleName?: string;
+};
 const UserContext = createContext<User | null>(null);
 export const useCurrentUser = () => useContext(UserContext);
 

@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { HiOutlineAnnotation, HiOutlineChatAlt2, HiOutlineArrowsExpand, HiChatAlt2, HiChevronDown, HiUserCircle, HiOutlineX, HiOutlineCog } from 'react-icons/hi';
+import { HiOutlineChatAlt2, HiOutlineArrowsExpand, HiChatAlt2, HiChevronDown, HiUserCircle, HiOutlineX, HiOutlineCog, HiOutlineAnnotation } from 'react-icons/hi';
 import { TbPictureInPicture, TbPictureInPictureOff, TbViewportWide } from 'react-icons/tb';
-import type { RoomChatMessage, RoomSummary } from '../hooks/useRoomSocket';
+import type { RoomChatMessage, RoomSummary, DanmakuEffect } from '../hooks/useRoomSocket';
 import Tooltip from './Tooltip';
 import RoomDanmaku from './RoomDanmaku';
 import RoomPlaybackRate from './RoomPlaybackRate';
 import RoomPlayerMenu from './RoomPlayerMenu';
 import RoomChatComposer from './RoomChatComposer';
+import { useTheme } from '../context/ThemeContext';
+import RoomDanmakuSettings from './RoomDanmakuSettings';
 import ChatMessageText from './ChatMessageText';
+import { useCurrentUser } from '../context/AccessGate';
+import { resolveChatMessageStyle } from '../lib/chatColor';
 
 const playModes: { value: NonNullable<RoomSummary['playMode']>; label: string }[] = [
   { value: 'sequential', label: '自动连播' },
@@ -40,12 +44,27 @@ type Props = {
   userId?: string;
   messages: RoomChatMessage[];
   liveMessages: RoomChatMessage[];
-  sendChat: (text: string) => Promise<{ success: boolean; error?: string }>;
+  sendChat: (text: string, color?: string, effect?: DanmakuEffect) => Promise<{ success: boolean; error?: string }>;
+  danmakuColor: string;
+  onDanmakuColorChange: (color: string) => void;
+  danmakuEffect: DanmakuEffect;
+  onDanmakuEffectChange: (effect: DanmakuEffect) => void;
+  danmakuFontSize: number;
+  onDanmakuFontSizeChange: (size: number) => void;
+  danmakuOpacity: number;
+  onDanmakuOpacityChange: (opacity: number) => void;
+  danmakuSpeed: number;
+  onDanmakuSpeedChange: (speed: number) => void;
 };
 
-export default function RoomPlayerChat({ controls, playMode, canSetPlayMode, playModeBusy, onPlayModeChange, playbackRate, canSetPlaybackRate, rateBusy, onPlaybackRateChange, fullscreen, onFullscreen, nativeFullscreen, theater, onTheater, pip, pipSupported, pipReady, displayBusy, onPip, connected, userId, messages, liveMessages, sendChat }: Props) {
+export default function RoomPlayerChat({ controls, playMode, canSetPlayMode, playModeBusy, onPlayModeChange, playbackRate, canSetPlaybackRate, rateBusy, onPlaybackRateChange, fullscreen, onFullscreen, nativeFullscreen, theater, onTheater, pip, pipSupported, pipReady, displayBusy, onPip, connected, userId, messages, liveMessages, sendChat, danmakuColor, onDanmakuColorChange, danmakuEffect, onDanmakuEffectChange, danmakuFontSize, onDanmakuFontSizeChange, danmakuOpacity, onDanmakuOpacityChange, danmakuSpeed, onDanmakuSpeedChange }: Props) {
+  const user = useCurrentUser();
+  const isVip = user?.isPermanentVip || false;
+
   const [open, setOpen] = useState(false);
   const [danmaku, setDanmaku] = useState(true);
+  const { isDarkMode } = useTheme();
+
   const scroll = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -78,11 +97,33 @@ export default function RoomPlayerChat({ controls, playMode, canSetPlayMode, pla
   }, [onFullscreen]);
 
   return <>
-    <RoomDanmaku events={liveMessages} enabled={danmaku && connected} userId={userId} />
+    <RoomDanmaku events={liveMessages} enabled={danmaku && connected} userId={userId} fontSize={danmakuFontSize} opacity={danmakuOpacity} speed={danmakuSpeed} />
     {controls && createPortal(<div className="watch-player-tools">
       <RoomPlaybackRate rate={playbackRate} canChange={canSetPlaybackRate} connected={connected}
         busy={rateBusy} onChange={onPlaybackRateChange} />
-      <Tooltip label={`${danmaku ? '关闭弹幕' : '开启弹幕'} (D)`}><button aria-label={danmaku ? '关闭弹幕' : '开启弹幕'} aria-keyshortcuts="d" aria-pressed={danmaku} onClick={() => setDanmaku(value => !value)}><HiOutlineAnnotation /></button></Tooltip>
+      <Tooltip label={`${danmaku ? '关闭弹幕' : '开启弹幕'} (D)`}>
+        <button
+          aria-label={danmaku ? '关闭弹幕' : '开启弹幕'}
+          aria-keyshortcuts="d"
+          aria-pressed={danmaku}
+          onClick={() => setDanmaku(value => !value)}
+        >
+          <HiOutlineAnnotation />
+        </button>
+      </Tooltip>
+      <RoomDanmakuSettings
+        isVip={isVip}
+        selectedColor={danmakuColor}
+        onColorChange={onDanmakuColorChange}
+        selectedEffect={danmakuEffect}
+        onEffectChange={onDanmakuEffectChange}
+        fontSize={danmakuFontSize}
+        onFontSizeChange={onDanmakuFontSizeChange}
+        opacity={danmakuOpacity}
+        onOpacityChange={onDanmakuOpacityChange}
+        speed={danmakuSpeed}
+        onSpeedChange={onDanmakuSpeedChange}
+      />
       <Tooltip label={`${open ? '收起聊天' : '展开聊天'} (C)`}><button ref={toggle} aria-label={open ? '收起聊天' : '展开聊天'} aria-keyshortcuts="c" aria-expanded={open} onClick={() => setOpen(value => !value)}><HiOutlineChatAlt2 /></button></Tooltip>
       <RoomPlayerMenu value={playMode} options={playModes} columns={1} label="播放设置"
         tooltip={`播放设置：${playModes.find(item => item.value === playMode)?.label}${canSetPlayMode ? '' : '（由房主或管理员调整）'}`}
@@ -107,13 +148,36 @@ export default function RoomPlayerChat({ controls, playMode, canSetPlayMode, pla
         follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < 60;
       }}>
         {!messages.length && <p className="watch-floating-empty">暂无消息</p>}
-        {messages.map(message => <article key={message.id} className={`watch-message ${message.userId === userId ? 'watch-message-self' : ''}`}>
-          {message.avatarUrl ? <img src={message.avatarUrl} alt="" referrerPolicy="no-referrer" /> : <HiUserCircle />}
-          <div className="watch-message-content"><header><strong>{message.username}</strong></header><p><ChatMessageText text={message.text} /></p></div>
-        </article>)}
+        {messages.map(message => {
+          // 仅 VIP 用户选中的颜色才会应用到消息文本,普通用户的 color 服务端默认为白色,在亮色主题下不可见。
+          const vipStyle = resolveChatMessageStyle(message, isDarkMode);
+          const titleStyle = vipStyle
+            ? { background: `${message.color}26`, borderColor: `${message.color}66`, color: vipStyle.textColor }
+            : undefined;
+          return <article key={message.id} className={`watch-message ${message.userId === userId ? 'watch-message-self' : ''} ${message.effect && message.effect !== 'normal' ? `effect-${message.effect}` : ''}`}>
+            {message.avatarUrl ? <img src={message.avatarUrl} alt="" referrerPolicy="no-referrer" /> : <HiUserCircle />}
+            <div className="watch-message-content">
+              <header>
+                <strong>{message.username}</strong>
+                {message.titleName && <span className="watch-user-title" title={`称号：${message.titleName}`} style={titleStyle}>【{message.titleName}】</span>}
+              </header>
+              <p style={vipStyle ? vipStyle.style : { color: isDarkMode ? '#eceef3' : '#111827' }}>
+                <ChatMessageText text={message.text} />
+              </p>
+            </div>
+          </article>;
+        })}
       </div>
-      <RoomChatComposer compact connected={connected} sendChat={sendChat} label="全屏聊天内容"
-        placeholder="发条弹幕..." onSent={() => { follow.current = true; }} />
+      <RoomChatComposer
+        compact
+        connected={connected}
+        sendChat={sendChat}
+        label="全屏聊天内容"
+        placeholder="发条弹幕..."
+        onSent={() => { follow.current = true; }}
+        defaultColor={danmakuColor}
+        defaultEffect={danmakuEffect}
+      />
     </section>}
   </>;
 }

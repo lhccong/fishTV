@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import DPlayer from 'dplayer';
 import Hls from 'hls.js';
 import { HiPlay } from 'react-icons/hi';
-import type { RoomPlayback, RoomChatMessage, RoomSummary, RoomClockResult } from '../hooks/useRoomSocket';
+import type { RoomPlayback, RoomChatMessage, RoomSummary, RoomClockResult, DanmakuEffect } from '../hooks/useRoomSocket';
 import RoomPlayerChat from './RoomPlayerChat';
 import { normalizePlaybackRate } from '../../shared/roomPlayback';
 
@@ -22,10 +22,20 @@ type Props = {
   liveMessages: RoomChatMessage[];
   userId?: string;
   sendChat: (text: string) => Promise<{ success: boolean; error?: string }>;
+  danmakuColor: string;
+  onDanmakuColorChange: (color: string) => void;
+  danmakuEffect: DanmakuEffect;
+  onDanmakuEffectChange: (effect: DanmakuEffect) => void;
+  danmakuFontSize: number;
+  onDanmakuFontSizeChange: (size: number) => void;
+  danmakuOpacity: number;
+  onDanmakuOpacityChange: (opacity: number) => void;
+  danmakuSpeed: number;
+  onDanmakuSpeedChange: (speed: number) => void;
   onEnded?: () => void;
 };
 
-export default function RoomVideoPlayer({ url, playback, owner, connected, clockReporter, getServerNow, playMode, onPlayModeChange, canSetPlaybackRate, onPlaybackRateChange, onClock, messages, liveMessages, userId, sendChat, onEnded }: Props) {
+export default function RoomVideoPlayer({ url, playback, owner, connected, clockReporter, getServerNow, playMode, onPlayModeChange, canSetPlaybackRate, onPlaybackRateChange, onClock, messages, liveMessages, userId, sendChat, danmakuColor, onDanmakuColorChange, danmakuEffect, onDanmakuEffectChange, danmakuFontSize, onDanmakuFontSizeChange, danmakuOpacity, onDanmakuOpacityChange, danmakuSpeed, onDanmakuSpeedChange, onEnded }: Props) {
   const element = useRef<HTMLVideoElement | null>(null);
   const playerHost = useRef<HTMLDivElement>(null);
   const [controls, setControls] = useState<HTMLElement | null>(null);
@@ -371,7 +381,12 @@ export default function RoomVideoPlayer({ url, playback, owner, connected, clock
       onPlayModeChange={mode => void changePlayMode(mode)}
       playbackRate={normalizePlaybackRate(playback.playbackRate)} canSetPlaybackRate={canSetPlaybackRate}
       rateBusy={rateBusy} onPlaybackRateChange={rate => void changePlaybackRate(rate)}
-      messages={messages} liveMessages={liveMessages} userId={userId} sendChat={sendChat} />
+      messages={messages} liveMessages={liveMessages} userId={userId} sendChat={sendChat}
+      danmakuColor={danmakuColor} onDanmakuColorChange={onDanmakuColorChange}
+      danmakuEffect={danmakuEffect} onDanmakuEffectChange={onDanmakuEffectChange}
+      danmakuFontSize={danmakuFontSize} onDanmakuFontSizeChange={onDanmakuFontSizeChange}
+      danmakuOpacity={danmakuOpacity} onDanmakuOpacityChange={onDanmakuOpacityChange}
+      danmakuSpeed={danmakuSpeed} onDanmakuSpeedChange={onDanmakuSpeedChange} />
     {(displayError || rateError || playModeError) && <p className="watch-rate-error" role="alert">{displayError || rateError || playModeError}</p>}
     {blocked && !error && <button className="watch-unlock" onClick={() => {
       void element.current?.play().then(() => setBlocked(false)).catch(() => setBlocked(true));
