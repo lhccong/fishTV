@@ -13,7 +13,14 @@ const PROFILE_VERSION = 'avatar-v2';
 const stateKey = (state: string) => `fishTV:oauth:state:${digest(state)}`;
 const sessionKey = (sid: string) => `fishTV:user:session:${digest(sid)}`;
 const validToken = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
-type Profile = { id: string; username: string; avatarUrl?: string };
+type Profile = { 
+  id: string; 
+  username: string; 
+  avatarUrl?: string;
+  isPermanentVip?: boolean;
+  donationAmount?: number;
+  currentTitleName?: string;
+};
 export type UserSession = { profile: Profile; version: string; profileVersion?: string };
 
 function returnPath(value: unknown) {
@@ -146,6 +153,10 @@ export function mountUserAuth(app: Express) {
         id: String(id),
         username: String(data.name || data.username || '摸鱼用户').trim().slice(0, 80),
         ...(avatarUrl ? { avatarUrl } : {}),
+        // 保存 VIP、捐赠金额和称号字段
+        ...(data.isPermanentVip !== undefined ? { isPermanentVip: Boolean(data.isPermanentVip) } : {}),
+        ...(typeof data.donationAmount === 'number' ? { donationAmount: data.donationAmount } : {}),
+        ...(data.currentTitleName ? { currentTitleName: String(data.currentTitleName).trim().slice(0, 100) } : {}),
       };
       const sid = randomBytes(32).toString('base64url');
       const old = cookie(req, USER_COOKIE);
